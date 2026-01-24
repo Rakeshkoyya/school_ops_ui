@@ -68,16 +68,28 @@ const schoolAdminNavItems: NavItem[] = [
     icon: <LayoutDashboard className="h-5 w-5" />,
   },
   {
-    label: 'Tasks',
-    href: '/tasks',
-    icon: <ClipboardList className="h-5 w-5" />,
-    permission: 'task:view',
+    label: 'Users',
+    href: '/users',
+    icon: <Users className="h-5 w-5" />,
+    permission: 'user:view',
   },
   {
     label: 'Students',
     href: '/students',
     icon: <GraduationCap className="h-5 w-5" />,
     permission: 'student:view',
+  },
+  {
+    label: 'Roles',
+    href: '/roles',
+    icon: <Shield className="h-5 w-5" />,
+    permission: 'role:view',
+  },
+  {
+    label: 'Tasks',
+    href: '/tasks',
+    icon: <ClipboardList className="h-5 w-5" />,
+    permission: 'task:view',
   },
   {
     label: 'Attendance',
@@ -95,18 +107,6 @@ const schoolAdminNavItems: NavItem[] = [
     label: 'Fee Management',
     href: '/fees',
     icon: <DollarSign className="h-5 w-5" />,
-  },
-  {
-    label: 'Users',
-    href: '/users',
-    icon: <Users className="h-5 w-5" />,
-    permission: 'user:view',
-  },
-  {
-    label: 'Roles',
-    href: '/roles',
-    icon: <Shield className="h-5 w-5" />,
-    permission: 'role:view',
   },
 ];
 

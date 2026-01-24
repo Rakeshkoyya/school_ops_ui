@@ -94,8 +94,14 @@ async function forwardToBackend(
     }
 
     // Handle JSON responses
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
+    try {
+      const data = await response.json();
+      return NextResponse.json(data, { status: response.status });
+    } catch {
+      // If JSON parsing fails, return text response
+      const text = await response.text();
+      return new NextResponse(text, { status: response.status });
+    }
   } catch (error) {
     console.error('Backend request failed:', error);
     return NextResponse.json(

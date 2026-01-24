@@ -245,24 +245,103 @@ export interface StaffTasksSummary {
 }
 
 // Attendance Types
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+
 export interface AttendanceRecord {
   id: number;
-  student_id: string;
+  student_id: number;
   student_name: string;
   class_name: string;
-  section: string;
-  date: string;
-  status: 'present' | 'absent' | 'late' | 'excused';
+  section: string | null;
+  attendance_date: string;
+  status: AttendanceStatus;
   remarks?: string;
   project_id: number;
+  upload_id?: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface AttendanceFilters {
+  class_section?: string;
   class_name?: string;
   section?: string;
-  date?: string;
-  status?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: AttendanceStatus;
+  student_id?: number;
+}
+
+export interface ClassSection {
+  class_name: string;
+  section: string | null;
+  class_section: string;
+  student_count: number;
+}
+
+export interface StudentAttendanceEntry {
+  student_id: number;
+  student_name: string;
+  class_name: string;
+  section: string | null;
+  status: AttendanceStatus | null;
+  remarks: string | null;
+  record_id: number | null;
+}
+
+export interface AttendanceByClassResponse {
+  class_section: string;
+  attendance_date: string;
+  students: StudentAttendanceEntry[];
+  total_students: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+}
+
+export interface BulkAttendanceCreate {
+  attendance_date: string;
+  class_section: string;
+  records: {
+    student_id: number;
+    status: AttendanceStatus;
+    remarks?: string;
+  }[];
+}
+
+export interface BulkAttendanceResponse {
+  total_records: number;
+  successful: number;
+  failed: number;
+  errors: { student_id?: number; message: string }[];
+  message: string;
+}
+
+export interface AttendanceUploadError {
+  row: number;
+  student_name?: string;
+  column?: string;
+  message: string;
+}
+
+export interface AttendanceUploadResult {
+  total_rows: number;
+  successful_rows: number;
+  failed_rows: number;
+  skipped_rows: number;
+  errors: AttendanceUploadError[];
+  message: string;
+}
+
+export interface AttendanceSummary {
+  total_records: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  date_from: string;
+  date_to: string;
 }
 
 // Exam Types
