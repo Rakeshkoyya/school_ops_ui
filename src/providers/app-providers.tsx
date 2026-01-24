@@ -1,0 +1,26 @@
+'use client';
+
+import { ReactNode } from 'react';
+import { QueryProvider } from './query-provider';
+import { AuthProvider, ProjectProvider } from '@/contexts';
+import { AuthGuard } from '@/components/guards';
+import { Toaster } from '@/components/ui/sonner';
+
+interface AppProvidersProps {
+  children: ReactNode;
+}
+
+export function AppProviders({ children }: AppProvidersProps) {
+  return (
+    <QueryProvider>
+      <AuthProvider>
+        <ProjectProvider>
+          <AuthGuard>
+            {children}
+          </AuthGuard>
+          <Toaster position="top-right" richColors closeButton />
+        </ProjectProvider>
+      </AuthProvider>
+    </QueryProvider>
+  );
+}
