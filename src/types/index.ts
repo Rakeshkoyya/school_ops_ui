@@ -347,24 +347,96 @@ export interface AttendanceSummary {
 // Exam Types
 export interface ExamRecord {
   id: number;
-  student_id: string;
+  student_id: number;
   student_name: string;
   class_name: string;
-  section: string;
+  section: string | null;
   exam_name: string;
   subject: string;
+  exam_date: string;
   marks_obtained: number;
-  total_marks: number;
+  max_marks: number;
   grade?: string;
+  remarks?: string;
   project_id: number;
+  upload_id?: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ExamFilters {
+  class_section?: string;
   class_name?: string;
   section?: string;
   exam_name?: string;
   subject?: string;
+  month?: number;
+  year?: number;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface StudentExamEntry {
+  student_id: number;
+  student_name: string;
+  class_name: string;
+  section: string | null;
+  marks_obtained: number | null;
+  max_marks: number | null;
+  grade: string | null;
+  remarks: string | null;
+  record_id: number | null;
+}
+
+export interface ExamByClassResponse {
+  class_section: string;
+  exam_name: string;
+  subject: string;
+  exam_date: string | null;
+  max_marks: number | null;
+  students: StudentExamEntry[];
+  total_students: number;
+  average_marks: number | null;
+  highest_marks: number | null;
+  lowest_marks: number | null;
+}
+
+export interface BulkExamCreate {
+  exam_name: string;
+  subject: string;
+  exam_date: string;
+  max_marks: number;
+  class_section: string;
+  records: {
+    student_id: number;
+    marks_obtained: number;
+    grade?: string;
+    remarks?: string;
+  }[];
+}
+
+export interface BulkExamResponse {
+  total_records: number;
+  successful: number;
+  failed: number;
+  errors: { student_id?: number; message: string }[];
+  message: string;
+}
+
+export interface ExamUploadError {
+  row: number;
+  student_name?: string;
+  column?: string;
+  message: string;
+}
+
+export interface ExamUploadResult {
+  total_rows: number;
+  successful_rows: number;
+  failed_rows: number;
+  skipped_rows: number;
+  errors: ExamUploadError[];
+  message: string;
 }
 
 // Upload Types
