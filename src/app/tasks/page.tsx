@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout';
 import { api } from '@/lib/api-client';
@@ -59,13 +59,29 @@ import {
   SortAsc,
   Settings2,
   ChevronDown,
+  ChevronRight,
   Circle,
   Timer,
   Folder,
   X,
   Check,
   GripVertical,
+  User,
+  Layers,
 } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import type {
   Task,
   TaskStatus,
@@ -79,6 +95,8 @@ import { cn } from '@/lib/utils';
 
 // ==================== Types ====================
 
+type GroupByOption = 'none' | 'category' | 'status';
+
 interface TasksResponse {
   items: Task[];
   total: number;
@@ -89,64 +107,84 @@ interface TasksResponse {
 
 // ==================== Status Config ====================
 
-const statusConfig: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode; bg: string }> = {
+const statusConfig: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode; bg: string; headerBg: string }> = {
   pending: {
     label: 'To Do',
     color: 'text-gray-600',
     bg: 'bg-gray-100',
+    headerBg: '#6B7280',
     icon: <Circle className="h-3.5 w-3.5" />,
   },
   in_progress: {
     label: 'In Progress',
     color: 'text-blue-600',
     bg: 'bg-blue-100',
+    headerBg: '#3B82F6',
     icon: <Play className="h-3.5 w-3.5 fill-current" />,
   },
   done: {
     label: 'Done',
     color: 'text-green-600',
     bg: 'bg-green-100',
+    headerBg: '#22C55E',
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
   overdue: {
     label: 'Overdue',
     color: 'text-red-600',
     bg: 'bg-red-100',
+    headerBg: '#EF4444',
     icon: <Clock className="h-3.5 w-3.5" />,
   },
   cancelled: {
     label: 'Cancelled',
     color: 'text-gray-400',
     bg: 'bg-gray-50',
+    headerBg: '#9CA3AF',
     icon: <X className="h-3.5 w-3.5" />,
   },
 };
 
 // ==================== Countdown Timer Component ====================
 
-function CountdownTimer({ dueDate, timeRemaining }: { dueDate: string; timeRemaining?: number }) {
-  const [remaining, setRemaining] = useState(timeRemaining ?? 0);
+function CountdownTimer({ dueDate }: { dueDate: string }) {
+  const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
-    if (timeRemaining === undefined) return;
-    setRemaining(timeRemaining);
-    const interval = setInterval(() => setRemaining((prev) => prev - 1), 1000);
+    // Parse the due date and set to 00:00:00 of that day
+    const dueDateObj = new Date(dueDate);
+    dueDateObj.setHours(0, 0, 0, 0);
+    const dueTimestamp = dueDateObj.getTime();
+
+    const updateRemaining = () => {
+      const now = Date.now();
+      const diff = Math.floor((dueTimestamp - now) / 1000);
+      setRemaining(diff);
+    };
+
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 1000);
     return () => clearInterval(interval);
-  }, [timeRemaining]);
+  }, [dueDate]);
 
   const isOverdue = remaining < 0;
   const absRemaining = Math.abs(remaining);
+  
   const days = Math.floor(absRemaining / 86400);
   const hours = Math.floor((absRemaining % 86400) / 3600);
   const minutes = Math.floor((absRemaining % 3600) / 60);
+  const seconds = absRemaining % 60;
 
+  // Format: show days if > 0, otherwise show HH:MM:SS
   let display = '';
-  if (days > 0) display = `${days}d ${hours}h`;
-  else if (hours > 0) display = `${hours}h ${minutes}m`;
-  else display = `${minutes}m`;
+  if (days > 0) {
+    display = `${days}d ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  } else {
+    display = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 
   return (
-    <span className={cn('text-xs font-mono', isOverdue ? 'text-red-600' : 'text-gray-500')}>
+    <span className={cn('text-xs font-mono tabular-nums', isOverdue ? 'text-red-600' : 'text-gray-600')}>
       {isOverdue ? '-' : ''}{display}
     </span>
   );
@@ -248,6 +286,27 @@ function InlineEditCell({
 
 // ==================== Category Manager Dialog ====================
 
+const CATEGORY_COLORS = [
+  { name: 'Gray', value: '#6B7280' },
+  { name: 'Red', value: '#EF4444' },
+  { name: 'Orange', value: '#F97316' },
+  { name: 'Amber', value: '#F59E0B' },
+  { name: 'Yellow', value: '#EAB308' },
+  { name: 'Lime', value: '#84CC16' },
+  { name: 'Green', value: '#22C55E' },
+  { name: 'Emerald', value: '#10B981' },
+  { name: 'Teal', value: '#14B8A6' },
+  { name: 'Cyan', value: '#06B6D4' },
+  { name: 'Sky', value: '#0EA5E9' },
+  { name: 'Blue', value: '#3B82F6' },
+  { name: 'Indigo', value: '#6366F1' },
+  { name: 'Violet', value: '#8B5CF6' },
+  { name: 'Purple', value: '#A855F7' },
+  { name: 'Fuchsia', value: '#D946EF' },
+  { name: 'Pink', value: '#EC4899' },
+  { name: 'Rose', value: '#F43F5E' },
+];
+
 function CategoryManagerDialog({
   open,
   onOpenChange,
@@ -258,23 +317,26 @@ function CategoryManagerDialog({
   categories: TaskCategory[];
 }) {
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#3B82F6');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [editColor, setEditColor] = useState('');
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => api.post('/tasks/categories', { name }),
+    mutationFn: (data: { name: string; color: string }) => api.post('/tasks/categories', data),
     onSuccess: () => {
       toast.success('Category created');
       queryClient.invalidateQueries({ queryKey: ['task-categories'] });
       setNewCategoryName('');
+      setNewCategoryColor('#3B82F6');
     },
     onError: () => toast.error('Failed to create category'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      api.patch(`/tasks/categories/${id}`, { name }),
+    mutationFn: ({ id, name, color }: { id: number; name: string; color: string }) =>
+      api.patch(`/tasks/categories/${id}`, { name, color }),
     onSuccess: () => {
       toast.success('Category updated');
       queryClient.invalidateQueries({ queryKey: ['task-categories'] });
@@ -305,24 +367,42 @@ function CategoryManagerDialog({
 
         <div className="space-y-4 py-4">
           {/* Add new category */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="New category name..."
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newCategoryName.trim()) {
-                  createMutation.mutate(newCategoryName.trim());
-                }
-              }}
-            />
-            <Button
-              size="sm"
-              onClick={() => newCategoryName.trim() && createMutation.mutate(newCategoryName.trim())}
-              disabled={!newCategoryName.trim() || createMutation.isPending}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Input
+                placeholder="New category name..."
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newCategoryName.trim()) {
+                    createMutation.mutate({ name: newCategoryName.trim(), color: newCategoryColor });
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                onClick={() => newCategoryName.trim() && createMutation.mutate({ name: newCategoryName.trim(), color: newCategoryColor })}
+                disabled={!newCategoryName.trim() || createMutation.isPending}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {/* Color picker for new category */}
+            <div className="flex flex-wrap gap-1">
+              {CATEGORY_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  className={cn(
+                    'w-6 h-6 rounded-full border-2 transition-all',
+                    newCategoryColor === color.value ? 'border-gray-900 scale-110' : 'border-transparent hover:scale-105'
+                  )}
+                  style={{ backgroundColor: color.value }}
+                  onClick={() => setNewCategoryColor(color.value)}
+                  title={color.name}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Category list */}
@@ -333,34 +413,55 @@ function CategoryManagerDialog({
               </div>
             ) : (
               categories.map((category) => (
-                <div key={category.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                <div key={category.id} className="p-3 hover:bg-gray-50">
                   {editingId === category.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <Input
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="h-8"
-                        autoFocus
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          if (editValue.trim()) {
-                            updateMutation.mutate({ id: category.id, name: editValue.trim() });
-                          }
-                        }}
-                      >
-                        <Check className="h-4 w-4 text-green-600" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                        <X className="h-4 w-4 text-gray-500" />
-                      </Button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="h-8"
+                          autoFocus
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (editValue.trim()) {
+                              updateMutation.mutate({ id: category.id, name: editValue.trim(), color: editColor });
+                            }
+                          }}
+                        >
+                          <Check className="h-4 w-4 text-green-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                          <X className="h-4 w-4 text-gray-500" />
+                        </Button>
+                      </div>
+                      {/* Color picker for editing */}
+                      <div className="flex flex-wrap gap-1">
+                        {CATEGORY_COLORS.map((color) => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            className={cn(
+                              'w-5 h-5 rounded-full border-2 transition-all',
+                              editColor === color.value ? 'border-gray-900 scale-110' : 'border-transparent hover:scale-105'
+                            )}
+                            style={{ backgroundColor: color.value }}
+                            onClick={() => setEditColor(color.value)}
+                            title={color.name}
+                          />
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-gray-400" />
+                        <div 
+                          className="w-4 h-4 rounded-full" 
+                          style={{ backgroundColor: category.color || '#6B7280' }}
+                        />
                         <span className="font-medium">{category.name}</span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -370,6 +471,7 @@ function CategoryManagerDialog({
                           onClick={() => {
                             setEditingId(category.id);
                             setEditValue(category.name);
+                            setEditColor(category.color || '#6B7280');
                           }}
                         >
                           <Edit3 className="h-4 w-4 text-gray-500" />
@@ -382,7 +484,7 @@ function CategoryManagerDialog({
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               ))
@@ -407,11 +509,13 @@ function AddTaskDialog({
   onOpenChange,
   categories,
   staffList,
+  preselectedAssignee,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: TaskCategory[];
   staffList?: StaffMember[];
+  preselectedAssignee?: StaffMember | null;
 }) {
   const [formData, setFormData] = useState<CreateTaskPayload>({
     title: '',
@@ -422,16 +526,23 @@ function AddTaskDialog({
   });
   const queryClient = useQueryClient();
 
+  // Update assigned_to_user_id when preselectedAssignee changes
+  useEffect(() => {
+    if (preselectedAssignee) {
+      setFormData(prev => ({ ...prev, assigned_to_user_id: preselectedAssignee.id }));
+    }
+  }, [preselectedAssignee, open]);
+
   const createMutation = useMutation({
     mutationFn: (data: CreateTaskPayload) => api.post('/tasks', data),
     onSuccess: () => {
-      toast.success('Task created');
+      toast.success(preselectedAssignee ? 'Task assigned' : 'Task created');
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       onOpenChange(false);
       setFormData({ title: '', description: '', category_id: undefined, due_date: '', assigned_to_user_id: undefined });
     },
-    onError: () => toast.error('Failed to create task'),
+    onError: () => toast.error(preselectedAssignee ? 'Failed to assign task' : 'Failed to create task'),
   });
 
   return (
@@ -439,7 +550,11 @@ function AddTaskDialog({
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(formData); }}>
           <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
+            <DialogTitle>
+              {preselectedAssignee 
+                ? `Assign Task to ${preselectedAssignee.name}` 
+                : 'Create New Task'}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -494,7 +609,8 @@ function AddTaskDialog({
               </div>
             </div>
 
-            {staffList && staffList.length > 0 && (
+            {/* Show assignee selector only when not preselected */}
+            {!preselectedAssignee && staffList && staffList.length > 0 && (
               <div className="grid gap-2">
                 <Label>Assign To</Label>
                 <Select
@@ -515,6 +631,22 @@ function AddTaskDialog({
                 </Select>
               </div>
             )}
+
+            {/* Show assigned user info when preselected */}
+            {preselectedAssignee && (
+              <div className="grid gap-2">
+                <Label>Assigning To</Label>
+                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-md border">
+                  <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
+                    {preselectedAssignee.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{preselectedAssignee.name}</span>
+                    <span className="text-xs text-muted-foreground">{preselectedAssignee.email}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -522,7 +654,9 @@ function AddTaskDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending || !formData.title.trim()}>
-              {createMutation.isPending ? 'Creating...' : 'Create Task'}
+              {createMutation.isPending 
+                ? (preselectedAssignee ? 'Assigning...' : 'Creating...') 
+                : (preselectedAssignee ? 'Assign Task' : 'Create Task')}
             </Button>
           </DialogFooter>
         </form>
@@ -536,6 +670,9 @@ function AddTaskDialog({
 function TaskRow({
   task,
   categories,
+  staffList,
+  isAdmin,
+  isAdminAssigned,
   onUpdate,
   onDelete,
   onStart,
@@ -543,16 +680,24 @@ function TaskRow({
 }: {
   task: Task;
   categories: TaskCategory[];
+  staffList?: StaffMember[];
+  isAdmin?: boolean;
+  isAdminAssigned?: boolean;
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number) => void;
   onStart: (id: number) => void;
   onComplete: (id: number) => void;
 }) {
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
   const displayStatus = task.is_overdue && task.status !== 'done' ? 'overdue' : task.status;
   const isCompleted = task.status === 'done';
 
   return (
-    <TableRow className={cn('group', isCompleted && 'opacity-60')}>
+    <TableRow className={cn(
+      'group',
+      isCompleted && 'opacity-60',
+      isAdminAssigned && !isCompleted && 'bg-blue-100/60 hover:bg-blue-50'
+    )}>
       {/* Checkbox */}
       <TableCell className="w-10">
         <Checkbox
@@ -634,26 +779,106 @@ function TaskRow({
         </DropdownMenu>
       </TableCell>
 
-      {/* Due Date */}
+      {/* Created On */}
       <TableCell>
-        {task.due_date ? (
-          <div className="flex flex-col">
-            <span className={cn('text-sm', task.is_overdue && 'text-red-600 font-medium')}>
-              {format(new Date(task.due_date), 'MMM d')}
-            </span>
-            {!isCompleted && task.time_remaining_seconds !== undefined && (
-              <CountdownTimer dueDate={task.due_date} timeRemaining={task.time_remaining_seconds} />
-            )}
+        <span className="text-sm text-gray-600">
+          {format(new Date(task.created_at), 'MMM d, yyyy')}
+        </span>
+      </TableCell>
+
+      {/* Created By */}
+      <TableCell>
+        {task.created_by_name ? (
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-600">
+              {task.created_by_name.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-sm">{task.created_by_name}</span>
           </div>
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
       </TableCell>
 
-      {/* Assigned To */}
+      {/* Assigned To - Editable for Admin */}
       <TableCell>
-        {task.assigned_user_name ? (
-          <span className="text-sm">{task.assigned_user_name}</span>
+        {isAdmin && staffList ? (
+          <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
+            <PopoverTrigger asChild>
+              <button className="focus:outline-none text-left">
+                {task.assigned_user_name ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                      {task.assigned_user_name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-sm hover:text-blue-600">{task.assigned_user_name}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400 hover:text-blue-600">+ Assign</span>
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[250px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search staff..." />
+                <CommandList>
+                  <CommandEmpty>No staff found.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="__unassign__"
+                      onSelect={() => {
+                        onUpdate(task.id, { assigned_to_user_id: undefined });
+                        setAssigneePopoverOpen(false);
+                      }}
+                    >
+                      <span className="text-gray-500">Unassign</span>
+                    </CommandItem>
+                    {staffList.map((staff) => (
+                      <CommandItem
+                        key={staff.id}
+                        value={staff.name}
+                        onSelect={() => {
+                          onUpdate(task.id, { assigned_to_user_id: staff.id });
+                          setAssigneePopoverOpen(false);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                            {staff.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm">{staff.name}</span>
+                            <span className="text-xs text-muted-foreground">{staff.email}</span>
+                          </div>
+                        </div>
+                        {task.assigned_to_user_id === staff.id && (
+                          <Check className="ml-auto h-4 w-4" />
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        ) : task.assigned_user_name ? (
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+              {task.assigned_user_name.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-sm">{task.assigned_user_name}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">—</span>
+        )}
+      </TableCell>
+
+      {/* Due Date */}
+      <TableCell>
+        {task.due_date ? (
+          <span className={cn('text-sm', task.is_overdue && 'text-red-600 font-medium')}>
+            {format(new Date(task.due_date), 'MMM d, yyyy')}
+          </span>
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
@@ -661,14 +886,8 @@ function TaskRow({
 
       {/* Timer */}
       <TableCell>
-        {task.start_time && !task.end_time ? (
-          <ElapsedTimer startTime={task.start_time} />
-        ) : task.end_time && task.elapsed_seconds !== undefined ? (
-          <span className="text-xs text-gray-500 font-mono">
-            {String(Math.floor(task.elapsed_seconds / 3600)).padStart(2, '0')}:
-            {String(Math.floor((task.elapsed_seconds % 3600) / 60)).padStart(2, '0')}:
-            {String(task.elapsed_seconds % 60).padStart(2, '0')}
-          </span>
+        {task.due_date ? (
+          <CountdownTimer dueDate={task.due_date} />
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
@@ -720,6 +939,10 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<number | 'all'>('all');
   const [viewMode, setViewMode] = useState<'my' | 'all'>('my');
+  const [selectedAssignee, setSelectedAssignee] = useState<StaffMember | null>(null);
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Data Queries
   const { data: myTasks, isLoading: loadingMyTasks } = useQuery({
@@ -730,11 +953,12 @@ export default function TasksPage() {
   });
 
   const { data: allTasksData, isLoading: loadingAllTasks } = useQuery({
-    queryKey: ['tasks', project?.id, statusFilter, categoryFilter],
+    queryKey: ['tasks', project?.id, statusFilter, categoryFilter, selectedAssignee?.id],
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (categoryFilter !== 'all') params.append('category_id', categoryFilter.toString());
+      if (selectedAssignee) params.append('assigned_to_user_id', selectedAssignee.id.toString());
       params.append('page_size', '100');
       return api.get<TasksResponse>(`/tasks?${params}`);
     },
@@ -813,17 +1037,57 @@ export default function TasksPage() {
     });
   }, [myTasks, allTasksData, viewMode, searchQuery, statusFilter, categoryFilter]);
 
-  // Stats
-  const stats = useMemo(() => {
-    const source = myTasks || [];
-    return {
-      total: source.length,
-      pending: source.filter((t) => t.status === 'pending').length,
-      inProgress: source.filter((t) => t.status === 'in_progress').length,
-      done: source.filter((t) => t.status === 'done').length,
-      overdue: source.filter((t) => t.is_overdue && t.status !== 'done').length,
-    };
-  }, [myTasks]);
+  // Grouped Tasks
+  const groupedTasks = useMemo(() => {
+    if (groupBy === 'none') return null;
+    
+    const groups: Record<string, { label: string; color?: string; bgColor?: string; tasks: Task[] }> = {};
+    
+    if (groupBy === 'category') {
+      // Group by category - use category color
+      tasks.forEach((task) => {
+        const key = task.category_id?.toString() || 'uncategorized';
+        if (!groups[key]) {
+          // Find the category to get its color
+          const category = categories.find(c => c.id === task.category_id);
+          groups[key] = {
+            label: task.category_name || 'Uncategorized',
+            bgColor: category?.color || '#6B7280',
+            tasks: [],
+          };
+        }
+        groups[key].tasks.push(task);
+      });
+    } else if (groupBy === 'status') {
+      // Group by status
+      const statusOrder = ['pending', 'in_progress', 'done'];
+      statusOrder.forEach((status) => {
+        const statusTasks = tasks.filter((t) => t.status === status);
+        if (statusTasks.length > 0) {
+          const config = statusConfig[status as TaskStatus];
+          groups[status] = {
+            label: config.label,
+            bgColor: config.headerBg,
+            tasks: statusTasks,
+          };
+        }
+      });
+    }
+    
+    return groups;
+  }, [tasks, groupBy, categories]);
+
+  const toggleGroup = (groupKey: string) => {
+    setCollapsedGroups((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey);
+      } else {
+        newSet.add(groupKey);
+      }
+      return newSet;
+    });
+  };
 
   const isLoading = viewMode === 'my' ? loadingMyTasks : loadingAllTasks;
 
@@ -837,49 +1101,17 @@ export default function TasksPage() {
             <p className="text-muted-foreground">Manage and track your work</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShowCategoryManager(true)}>
-              <Settings2 className="h-4 w-4 mr-2" />
-              Categories
-            </Button>
+            {isProjectAdmin && (
+              <Button variant="outline" onClick={() => setShowCategoryManager(true)}>
+                <Settings2 className="h-4 w-4 mr-2" />
+                Categories
+              </Button>
+            )}
             <Button onClick={() => setShowAddTask(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              New Task
+              {selectedAssignee ? 'Assign Task' : 'New Task'}
             </Button>
           </div>
-        </div>
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <Card className="cursor-pointer hover:bg-gray-50" onClick={() => setStatusFilter('all')}>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <div className="text-xs text-muted-foreground">Total</div>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:bg-gray-50" onClick={() => setStatusFilter('pending')}>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-gray-600">{stats.pending}</div>
-              <div className="text-xs text-muted-foreground">To Do</div>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:bg-gray-50" onClick={() => setStatusFilter('in_progress')}>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-blue-600">{stats.inProgress}</div>
-              <div className="text-xs text-muted-foreground">In Progress</div>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:bg-red-50" onClick={() => setStatusFilter('overdue')}>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-red-600">{stats.overdue}</div>
-              <div className="text-xs text-muted-foreground">Overdue</div>
-            </CardContent>
-          </Card>
-          <Card className="cursor-pointer hover:bg-green-50" onClick={() => setStatusFilter('done')}>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-green-600">{stats.done}</div>
-              <div className="text-xs text-muted-foreground">Done</div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Filters & Search */}
@@ -941,73 +1173,226 @@ export default function TasksPage() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Assignee Filter */}
+            {isProjectAdmin && viewMode === 'all' && (
+              <div className="flex items-center gap-1">
+                <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={selectedAssignee ? "w-[150px] justify-start" : "w-[180px] justify-start"}>
+                      <User className="h-4 w-4 mr-2" />
+                      {selectedAssignee ? (
+                        <span className="truncate">{selectedAssignee.name}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Select Assignee</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[250px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search staff..." />
+                    <CommandList>
+                      <CommandEmpty>No staff found.</CommandEmpty>
+                      <CommandGroup>
+                        {staffList?.map((staff) => (
+                          <CommandItem
+                            key={staff.id}
+                            value={staff.name}
+                            onSelect={() => {
+                              setSelectedAssignee(staff);
+                              setAssigneePopoverOpen(false);
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                                {staff.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-sm">{staff.name}</span>
+                                <span className="text-xs text-muted-foreground">{staff.email}</span>
+                              </div>
+                            </div>
+                            {selectedAssignee?.id === staff.id && (
+                              <Check className="ml-auto h-4 w-4" />
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {selectedAssignee && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSelectedAssignee(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+              </div>
+            )}
           </div>
 
-          {/* Search */}
-          <div className="relative w-full sm:w-[250px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+          {/* Search and Group By */}
+          <div className="flex items-center gap-2">
+            <div className="relative w-full sm:w-[250px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            
+            {/* Group By */}
+            <Select value={groupBy} onValueChange={(v) => {
+              setGroupBy(v as GroupByOption);
+              setCollapsedGroups(new Set());
+            }}>
+              <SelectTrigger className="w-[150px]">
+                <Layers className="h-4 w-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Grouping</SelectItem>
+                <SelectItem value="category">By Category</SelectItem>
+                <SelectItem value="status">By Status</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {/* Table */}
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-10"></TableHead>
-                <TableHead>Task</TableHead>
-                <TableHead className="w-[120px]">Status</TableHead>
-                <TableHead className="w-[140px]">Category</TableHead>
-                <TableHead className="w-[100px]">Due</TableHead>
-                <TableHead className="w-[120px]">Assignee</TableHead>
-                <TableHead className="w-[80px]">Timer</TableHead>
-                <TableHead className="w-10"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell colSpan={8}>
-                      <Skeleton className="h-12 w-full" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <CheckCircle2 className="h-8 w-8" />
-                      <span>No tasks found</span>
-                      <Button variant="outline" size="sm" onClick={() => setShowAddTask(true)}>
-                        <Plus className="h-4 w-4 mr-1" />
-                        Create your first task
-                      </Button>
-                    </div>
-                  </TableCell>
+        {/* Tables */}
+        {isLoading ? (
+          <Card>
+            <div className="p-6 space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </Card>
+        ) : tasks.length === 0 ? (
+          <Card>
+            <div className="flex flex-col items-center gap-2 text-muted-foreground py-16">
+              <CheckCircle2 className="h-8 w-8" />
+              <span>No tasks found</span>
+              <Button variant="outline" size="sm" onClick={() => setShowAddTask(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Create your first task
+              </Button>
+            </div>
+          </Card>
+        ) : groupBy !== 'none' && groupedTasks ? (
+          // Grouped view - separate tables for each group
+          <div className="space-y-4">
+            {Object.entries(groupedTasks).map(([groupKey, group]) => (
+              <div key={groupKey}>
+                {/* Group Header */}
+                <div 
+                  className={cn(
+                    "flex items-center gap-2 py-2 px-3 rounded-t-lg border border-b-0 cursor-pointer transition-colors",
+                    !group.bgColor && "bg-gray-100 hover:bg-gray-200"
+                  )}
+                  style={group.bgColor ? { backgroundColor: group.bgColor } : undefined}
+                  onClick={() => toggleGroup(groupKey)}
+                >
+                  {collapsedGroups.has(groupKey) ? (
+                    <ChevronRight className={cn("h-5 w-5", group.bgColor ? "text-white" : "text-gray-500")} />
+                  ) : (
+                    <ChevronDown className={cn("h-5 w-5", group.bgColor ? "text-white" : "text-gray-500")} />
+                  )}
+                  <span className={cn(
+                    'font-semibold text-base', 
+                    group.bgColor ? 'text-white' : group.color
+                  )}>
+                    {group.label}
+                  </span>
+                  <Badge variant="secondary" className={cn("ml-2", group.bgColor && "bg-white/20 text-white hover:bg-white/30")}>
+                    {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
+                  </Badge>
+                </div>
+                
+                {/* Group Table */}
+                {!collapsedGroups.has(groupKey) && (
+                  <Card className="rounded-t-none border-t-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead>Task</TableHead>
+                          <TableHead className="w-[120px]">Status</TableHead>
+                          <TableHead className="w-[140px]">Category</TableHead>
+                          <TableHead className="w-[110px]">Created On</TableHead>
+                          <TableHead className="w-[120px]">Created By</TableHead>
+                          <TableHead className="w-[150px]">Assignee</TableHead>
+                          <TableHead className="w-[110px]">Due Date</TableHead>
+                          <TableHead className="w-[80px]">Timer</TableHead>
+                          <TableHead className="w-10"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.tasks.map((task) => (
+                          <TaskRow
+                            key={task.id}
+                            task={task}
+                            categories={categories}
+                            staffList={staffList}
+                            isAdmin={isProjectAdmin}
+                            isAdminAssigned={task.created_by_id !== task.assigned_to_user_id}
+                            onUpdate={(id, data) => updateTaskMutation.mutate({ id, data })}
+                            onDelete={(id) => deleteTaskMutation.mutate(id)}
+                            onStart={(id) => startTaskMutation.mutate(id)}
+                            onComplete={(id) => completeTaskMutation.mutate(id)}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Flat view - single table
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10"></TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[140px]">Category</TableHead>
+                  <TableHead className="w-[110px]">Created On</TableHead>
+                  <TableHead className="w-[120px]">Created By</TableHead>
+                  <TableHead className="w-[150px]">Assignee</TableHead>
+                  <TableHead className="w-[110px]">Due Date</TableHead>
+                  <TableHead className="w-[80px]">Timer</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
-              ) : (
-                tasks.map((task) => (
+              </TableHeader>
+              <TableBody>
+                {tasks.map((task) => (
                   <TaskRow
                     key={task.id}
                     task={task}
                     categories={categories}
+                    staffList={staffList}
+                    isAdmin={isProjectAdmin}
+                    isAdminAssigned={task.created_by_id !== task.assigned_to_user_id}
                     onUpdate={(id, data) => updateTaskMutation.mutate({ id, data })}
                     onDelete={(id) => deleteTaskMutation.mutate(id)}
                     onStart={(id) => startTaskMutation.mutate(id)}
                     onComplete={(id) => completeTaskMutation.mutate(id)}
                   />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
       </div>
 
       {/* Dialogs */}
@@ -1016,6 +1401,7 @@ export default function TasksPage() {
         onOpenChange={setShowAddTask}
         categories={categories}
         staffList={isProjectAdmin ? staffList : undefined}
+        preselectedAssignee={selectedAssignee}
       />
       <CategoryManagerDialog
         open={showCategoryManager}
