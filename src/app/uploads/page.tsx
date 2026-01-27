@@ -66,7 +66,7 @@ export default function UploadsPage() {
   // Mock data for development
   const mockUploads: Upload[] = [
     {
-      id: '1',
+      id: 1,
       file_name: 'attendance_jan_week3.xlsx',
       file_size: 45678,
       upload_type: 'attendance',
@@ -74,15 +74,15 @@ export default function UploadsPage() {
       total_rows: 250,
       successful_rows: 250,
       failed_rows: 0,
-      uploaded_by_id: '1',
+      uploaded_by_id: 1,
       uploaded_by_name: 'John Admin',
-      project_id: '1',
+      project_id: 1,
       created_at: '2026-01-18T10:30:00Z',
       updated_at: '2026-01-18T10:31:00Z',
       processing_completed_at: '2026-01-18T10:31:00Z',
     },
     {
-      id: '2',
+      id: 2,
       file_name: 'exam_results_class10_midterm.xlsx',
       file_size: 128456,
       upload_type: 'exam',
@@ -90,14 +90,14 @@ export default function UploadsPage() {
       total_rows: 180,
       successful_rows: 0,
       failed_rows: 180,
-      uploaded_by_id: '2',
+      uploaded_by_id: 2,
       uploaded_by_name: 'Sarah Teacher',
-      project_id: '1',
+      project_id: 1,
       created_at: '2026-01-17T14:20:00Z',
       updated_at: '2026-01-17T14:20:00Z',
     },
     {
-      id: '3',
+      id: 3,
       file_name: 'attendance_jan_week2.xlsx',
       file_size: 52340,
       upload_type: 'attendance',
@@ -105,15 +105,15 @@ export default function UploadsPage() {
       total_rows: 280,
       successful_rows: 265,
       failed_rows: 15,
-      uploaded_by_id: '1',
+      uploaded_by_id: 1,
       uploaded_by_name: 'John Admin',
-      project_id: '1',
+      project_id: 1,
       created_at: '2026-01-15T09:15:00Z',
       updated_at: '2026-01-15T09:16:00Z',
       processing_completed_at: '2026-01-15T09:16:00Z',
     },
     {
-      id: '4',
+      id: 4,
       file_name: 'student_data_update.xlsx',
       file_size: 89234,
       upload_type: 'student',
@@ -121,14 +121,14 @@ export default function UploadsPage() {
       total_rows: 500,
       successful_rows: 0,
       failed_rows: 0,
-      uploaded_by_id: '3',
+      uploaded_by_id: 3,
       uploaded_by_name: 'Mike Staff',
-      project_id: '1',
+      project_id: 1,
       created_at: '2026-01-18T11:00:00Z',
       updated_at: '2026-01-18T11:00:00Z',
     },
     {
-      id: '5',
+      id: 5,
       file_name: 'exam_results_class9_unit1.xlsx',
       file_size: 67890,
       upload_type: 'exam',
@@ -136,9 +136,9 @@ export default function UploadsPage() {
       total_rows: 150,
       successful_rows: 150,
       failed_rows: 0,
-      uploaded_by_id: '2',
+      uploaded_by_id: 2,
       uploaded_by_name: 'Sarah Teacher',
-      project_id: '1',
+      project_id: 1,
       created_at: '2026-01-14T16:45:00Z',
       updated_at: '2026-01-14T16:46:00Z',
       processing_completed_at: '2026-01-14T16:46:00Z',
@@ -319,9 +319,11 @@ export default function UploadsPage() {
                                   <Eye className="h-4 w-4" />
                                 </Link>
                               </Button>
-                              {upload.error_file_url && (
-                                <Button variant="ghost" size="icon">
-                                  <Download className="h-4 w-4" />
+                              {upload.failed_rows > 0 && (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <Link href={`/uploads/${upload.id}`}>
+                                    <Download className="h-4 w-4" />
+                                  </Link>
                                 </Button>
                               )}
                             </div>

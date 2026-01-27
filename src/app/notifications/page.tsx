@@ -36,7 +36,7 @@ function NotificationCard({
   onMarkRead,
 }: {
   notification: Notification;
-  onMarkRead: (id: string) => void;
+  onMarkRead: (id: number) => void;
 }) {
   const config = typeConfig[notification.type];
   const Icon = config.icon;
@@ -100,7 +100,7 @@ export default function NotificationsPage() {
   });
 
   const markReadMutation = useMutation({
-    mutationFn: (id: string) => api.post('/notifications/mark-read', { notification_ids: [id] }),
+    mutationFn: (id: number) => api.post('/notifications/mark-read', { notification_ids: [id] }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       toast.success('Notification marked as read');
@@ -118,62 +118,62 @@ export default function NotificationsPage() {
   // Mock data for development
   const mockNotifications: Notification[] = [
     {
-      id: '1',
+      id: 1,
       title: 'Upload Completed',
       message: 'Your attendance file has been processed successfully. 250 records imported.',
       type: 'success',
       is_read: false,
       action_url: '/uploads/1',
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-18T10:30:00Z',
     },
     {
-      id: '2',
+      id: 2,
       title: 'Upload Failed',
       message: 'Failed to process exam results file. Please check the format and try again.',
       type: 'error',
       is_read: false,
       action_url: '/uploads/2',
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-18T09:15:00Z',
     },
     {
-      id: '3',
+      id: 3,
       title: 'New Task Assigned',
       message: 'You have been assigned a new task: "Review attendance data for Class 10A"',
       type: 'info',
       is_read: false,
       action_url: '/tasks',
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-17T16:45:00Z',
     },
     {
-      id: '4',
+      id: 4,
       title: 'Task Due Soon',
       message: 'Task "Prepare exam schedule" is due tomorrow. Please complete it on time.',
       type: 'warning',
       is_read: true,
       action_url: '/tasks',
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-17T08:00:00Z',
     },
     {
-      id: '5',
+      id: 5,
       title: 'Role Updated',
       message: 'Your roles have been updated. You now have access to exam management features.',
       type: 'info',
       is_read: true,
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-16T14:30:00Z',
     },
     {
-      id: '6',
+      id: 6,
       title: 'Welcome to School Ops',
       message: 'Welcome! Get started by exploring the dashboard and completing your profile.',
       type: 'success',
       is_read: true,
       action_url: '/dashboard',
-      user_id: '1',
+      user_id: 1,
       created_at: '2026-01-15T11:20:00Z',
     },
   ];
@@ -182,7 +182,7 @@ export default function NotificationsPage() {
   const unreadNotifications = notifications.filter((n) => !n.is_read);
   const readNotifications = notifications.filter((n) => n.is_read);
 
-  const handleMarkRead = (id: string) => {
+  const handleMarkRead = (id: number) => {
     markReadMutation.mutate(id);
   };
 

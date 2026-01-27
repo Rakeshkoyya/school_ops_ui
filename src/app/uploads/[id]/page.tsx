@@ -52,7 +52,7 @@ export default function UploadDetailPage() {
 
   // Mock data for development
   const mockUpload: Upload = {
-    id: uploadId,
+    id: Number(uploadId),
     file_name: 'attendance_jan_week2.xlsx',
     file_size: 52340,
     upload_type: 'attendance',
@@ -60,44 +60,44 @@ export default function UploadDetailPage() {
     total_rows: 280,
     successful_rows: 265,
     failed_rows: 15,
-    uploaded_by_id: '1',
+    uploaded_by_id: 1,
     uploaded_by_name: 'John Admin',
-    project_id: '1',
+    project_id: 1,
     created_at: '2026-01-15T09:15:00Z',
     updated_at: '2026-01-15T09:16:00Z',
     processing_completed_at: '2026-01-15T09:16:00Z',
     errors: [
       {
-        id: '1',
-        upload_id: uploadId,
+        id: 1,
+        upload_id: Number(uploadId),
         row_number: 45,
         error_type: 'validation',
         error_message: 'Invalid student ID: STU999 not found in database',
       },
       {
-        id: '2',
-        upload_id: uploadId,
+        id: 2,
+        upload_id: Number(uploadId),
         row_number: 78,
         error_type: 'validation',
         error_message: 'Invalid date format: Expected YYYY-MM-DD',
       },
       {
-        id: '3',
-        upload_id: uploadId,
+        id: 3,
+        upload_id: Number(uploadId),
         row_number: 112,
         error_type: 'validation',
         error_message: 'Invalid status value: "here" is not a valid status',
       },
       {
-        id: '4',
-        upload_id: uploadId,
+        id: 4,
+        upload_id: Number(uploadId),
         row_number: 156,
         error_type: 'duplicate',
         error_message: 'Duplicate entry: Attendance already recorded for this student on this date',
       },
       {
-        id: '5',
-        upload_id: uploadId,
+        id: 5,
+        upload_id: Number(uploadId),
         row_number: 198,
         error_type: 'validation',
         error_message: 'Missing required field: student_id cannot be empty',
@@ -261,7 +261,7 @@ export default function UploadDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {errorsLoading ? (
+              {uploadLoading ? (
                 <Skeleton className="h-[200px] w-full" />
               ) : (
                 <div className="rounded-md border">
@@ -290,7 +290,7 @@ export default function UploadDetailPage() {
                           </TableCell>
                           <TableCell>
                             <code className="text-xs bg-muted p-2 rounded block max-w-md overflow-x-auto">
-                              {JSON.stringify(error.row_data, null, 2)}
+                              {error.raw_value || '-'}
                             </code>
                           </TableCell>
                         </TableRow>
