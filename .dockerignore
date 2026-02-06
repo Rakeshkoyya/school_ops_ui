@@ -1,0 +1,50 @@
+# Docker ignore patterns for School Ops Frontend
+
+# Git
+.git
+.gitignore
+
+# Dependencies (will be installed in container)
+node_modules
+.pnpm-store
+
+# Build outputs (we build fresh in container)
+.next
+out
+dist
+build
+
+# Development files
+*.log
+npm-debug.log*
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+coverage
+.jest
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Misc
+*.bak
+*.tmp
