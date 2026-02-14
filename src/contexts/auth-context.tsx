@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, setAccessToken, clearAccessToken, getAccessToken, setCurrentProjectId } from '@/lib/api-client';
-import type { User, ProjectInfo, UserRoleInfo, ProjectWithRole, AuthMeResponse } from '@/types';
+import type { User, ProjectInfo, UserRoleInfo, ProjectWithRole, AuthMeResponse, AuthResponse } from '@/types';
 
 // Helper to combine ProjectInfo and UserRoleInfo into ProjectWithRole for easier frontend use
 function combineProjectAndRole(project: ProjectInfo, role: UserRoleInfo): ProjectWithRole {
@@ -30,10 +30,12 @@ interface AuthContextType {
   permissions: string[];
   isAuthenticated: boolean;
   isLoading: boolean;
+  isFirstLogin: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<{ user: User; projects: ProjectInfo[]; userRoles: UserRoleInfo[]; permissions: string[] } | null>;
   setActivePermissions: (permissions: string[]) => void;
+  clearFirstLogin: () => void;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
   hasAllPermissions: (permissions: string[]) => boolean;
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [userRoles, setUserRoles] = useState<UserRoleInfo[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
   const isInitialized = useRef(false);
   const router = useRouter();
 
@@ -118,12 +121,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [refreshAuth]);
 
   const login = async (username: string, password: string) => {
-    const response = await api.post<{ access_token: string; refresh_token: string; token_type: string; expires_in: number }>('/auth/login', {
+    const response = await api.post<AuthResponse>('/auth/login', {
       username,
       password,
     });
 
     setAccessToken(response.access_token);
+    
+    // Check if this is user's first login
+    if (response.is_first_login) {
+      setIsFirstLogin(true);
+    }
 
     // Fetch full auth data
     const authData = await refreshAuth();
@@ -159,8 +167,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setProjects([]);
     setUserRoles([]);
     setPermissions([]);
+    setIsFirstLogin(false);
     router.push('/auth/login');
   }, [router]);
+
+  // Clear first login flag after password change or dismissal
+  const clearFirstLogin = useCallback(() => {
+    setIsFirstLogin(false);
+  }, []);
 
   // Allow setting active permissions when project/role is switched
   const setActivePermissions = useCallback((newPermissions: string[]) => {
@@ -216,10 +230,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     permissions: permissions ?? [],
     isAuthenticated: !!user,
     isLoading,
+    isFirstLogin,
     login,
     logout,
     refreshAuth,
     setActivePermissions,
+    clearFirstLogin,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,

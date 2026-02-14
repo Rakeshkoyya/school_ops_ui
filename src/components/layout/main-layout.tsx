@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, ReactNode } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { Sidebar } from './sidebar';
 import { TopBar } from './topbar';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/auth-context';
+import { ChangePasswordDialog } from '@/components/auth/change-password-dialog';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -11,6 +13,15 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { isFirstLogin } = useAuth();
+  const [showFirstLoginDialog, setShowFirstLoginDialog] = useState(false);
+
+  // Show the dialog when isFirstLogin becomes true
+  useEffect(() => {
+    if (isFirstLogin) {
+      setShowFirstLoginDialog(true);
+    }
+  }, [isFirstLogin]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,6 +35,13 @@ export function MainLayout({ children }: MainLayoutProps) {
       >
         <div className="p-6">{children}</div>
       </main>
+
+      {/* First Login Password Change Prompt */}
+      <ChangePasswordDialog
+        open={showFirstLoginDialog}
+        onOpenChange={setShowFirstLoginDialog}
+        isFirstLogin={true}
+      />
     </div>
   );
 }

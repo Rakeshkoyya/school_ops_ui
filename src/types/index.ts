@@ -53,6 +53,7 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   expires_in: number;
+  is_first_login: boolean;
 }
 
 // Basic project info (unique projects)
