@@ -110,6 +110,7 @@ export interface Project {
   theme_color?: string;
   logo_url?: string;
   status: string;
+  default_evo_points: number;
   created_at: string;
   updated_at: string;
 }
@@ -125,6 +126,10 @@ export type Permission =
   | 'task_category:create'
   | 'task_category:update'
   | 'task_category:delete'
+  | 'task_view:create'
+  | 'task_view:update'
+  | 'task_view:delete'
+  | 'task_view:set_default'
   | 'attendance:view'
   | 'attendance:create'
   | 'attendance:update'
@@ -167,6 +172,51 @@ export interface Role {
 // Task Types
 export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'overdue' | 'cancelled';
 
+// Evo Points Types
+export type EvoReductionType = 'NONE' | 'GRADUAL' | 'FIXED';
+export type EvoTransactionType = 'task_reward' | 'admin_credit' | 'admin_debit';
+
+export interface EvoPointTransaction {
+  id: number;
+  user_id: number;
+  project_id?: number;
+  transaction_type: EvoTransactionType;
+  amount: number;
+  balance_after: number;
+  reason: string;
+  task_id?: number;
+  performed_by_id?: number;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  // Enriched fields
+  user_name?: string;
+  performed_by_name?: string;
+  task_title?: string;
+}
+
+export interface EvoPointBalance {
+  user_id: number;
+  user_name: string;
+  current_balance: number;
+  recent_transactions: EvoPointTransaction[];
+}
+
+export interface EvoPointLeaderboardEntry {
+  rank: number;
+  user_id: number;
+  user_name: string;
+  evo_points: number;
+}
+
+export interface TaskCompletionResponse {
+  task: Task;
+  points_earned?: number;
+  new_balance?: number;
+  was_late: boolean;
+  original_points?: number;
+  reduction_applied?: number;
+}
+
 export interface TaskCategory {
   id: number;
   project_id: number;
@@ -186,10 +236,11 @@ export interface Task {
   status: TaskStatus;
   start_time?: string;
   end_time?: string;
-  due_date?: string;
+  due_datetime?: string;
   assigned_to_user_id?: number;
   assigned_to_role_id?: number;
   auto_rule_key?: string;
+  recurring_template_id?: number;
   created_by_id: number;
   created_at: string;
   updated_at: string;
@@ -201,15 +252,28 @@ export interface Task {
   is_overdue?: boolean;
   time_remaining_seconds?: number;
   elapsed_seconds?: number;
+  // Evo Points fields
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_end?: string;
+  evo_fixed_reduction_points?: number;
+  effective_evo_points?: number;
+  current_reward_points?: number;
+  earned_evo_points?: number;
 }
 
 export interface CreateTaskPayload {
   title: string;
   description?: string;
   category_id?: number;
-  due_date?: string;
+  due_datetime?: string;
   assigned_to_user_id?: number;
   assigned_to_role_id?: number;
+  // Evo Points fields
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_end?: string;
+  evo_fixed_reduction_points?: number;
 }
 
 export interface UpdateTaskPayload {
@@ -217,9 +281,14 @@ export interface UpdateTaskPayload {
   description?: string;
   category_id?: number;
   status?: TaskStatus;
-  due_date?: string;
+  due_datetime?: string;
   assigned_to_user_id?: number;
   assigned_to_role_id?: number;
+  // Evo Points fields
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_end?: string;
+  evo_fixed_reduction_points?: number;
 }
 
 export interface TasksGroupedByCategory {
@@ -243,6 +312,140 @@ export interface StaffTasksSummary {
   overdue_count: number;
   completed_today_count: number;
   tasks: Task[];
+}
+
+// Task View Style Types
+export type TaskColumnField = 
+  | 'checkbox'
+  | 'title'
+  | 'description'
+  | 'status'
+  | 'category'
+  | 'created_at'
+  | 'created_by'
+  | 'assignee'
+  | 'due_datetime'
+  | 'evo_points'
+  | 'timer'
+  | 'actions';
+
+export interface ColumnConfig {
+  field: TaskColumnField;
+  visible: boolean;
+  order: number;
+  width?: string; // e.g., '150px', '10%', 'auto'
+}
+
+export interface ColumnMetadata {
+  field: TaskColumnField;
+  label: string;
+  default_visible: boolean;
+  default_order: number;
+  default_width?: string;
+}
+
+export interface TaskViewStyle {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string;
+  column_config: ColumnConfig[];
+  is_system_default: boolean;
+  created_by_id?: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskViewStyleListResponse {
+  views: TaskViewStyle[];
+  project_default_id?: number;
+}
+
+export interface UserViewPreference {
+  user_id: number;
+  project_id: number;
+  view_style_id: number;
+  view_style: TaskViewStyle;
+}
+
+export type ViewSource = 'user_preference' | 'project_default' | 'system_default';
+
+export interface EffectiveViewResponse {
+  view: TaskViewStyle;
+  source: ViewSource;
+}
+
+export interface AvailableColumnsResponse {
+  columns: ColumnMetadata[];
+}
+
+export interface CreateTaskViewStylePayload {
+  name: string;
+  description?: string;
+  column_config: ColumnConfig[];
+}
+
+export interface UpdateTaskViewStylePayload {
+  name?: string;
+  description?: string;
+  column_config?: ColumnConfig[];
+}
+
+// Recurring Task Template Types
+export type RecurrenceType = 'daily' | 'weekly' | 'once';
+
+export interface RecurringTaskTemplate {
+  id: number;
+  project_id: number;
+  title: string;
+  description?: string;
+  category_id?: number;
+  recurrence_type: RecurrenceType;
+  days_of_week?: string;  // e.g., "0,1,2,3,4" for Mon-Fri
+  scheduled_date?: string;  // For "once" recurrence type
+  created_on_time?: string;  // Time format HH:MM:SS
+  start_time?: string;
+  due_time?: string;
+  assigned_to_user_id?: number;
+  is_active: boolean;
+  last_generated_date?: string;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+  // Computed fields
+  category_name?: string;
+  assigned_user_name?: string;
+  created_by_name?: string;
+  recurrence_description?: string;
+}
+
+export interface CreateRecurringTaskTemplatePayload {
+  title: string;
+  description?: string;
+  category_id?: number;
+  recurrence_type: RecurrenceType;
+  days_of_week?: string;
+  scheduled_date?: string;
+  created_on_time?: string;
+  start_time?: string;
+  due_time?: string;
+  assigned_to_user_id?: number;
+  create_task_today?: boolean;  // Whether to also create a task for today
+}
+
+export interface UpdateRecurringTaskTemplatePayload {
+  title?: string;
+  description?: string;
+  category_id?: number;
+  recurrence_type?: RecurrenceType;
+  days_of_week?: string;
+  scheduled_date?: string;
+  created_on_time?: string;
+  start_time?: string;
+  due_time?: string;
+  assigned_to_user_id?: number;
+  is_active?: boolean;
 }
 
 // Attendance Types

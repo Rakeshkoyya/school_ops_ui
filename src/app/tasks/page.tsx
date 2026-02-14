@@ -68,6 +68,7 @@ import {
   GripVertical,
   User,
   Layers,
+  Repeat,
 } from 'lucide-react';
 import {
   Popover,
@@ -88,10 +89,19 @@ import type {
   TaskCategory,
   CreateTaskPayload,
   StaffMember,
+  RecurrenceType,
+  CreateRecurringTaskTemplatePayload,
+  TaskViewStyle,
+  ColumnConfig,
+  TaskCompletionResponse,
+  EvoReductionType,
+  EvoPointBalance,
 } from '@/types';
 import { format, formatDistanceToNow, differenceInSeconds } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { TaskViewSelector } from '@/components/ui/task-view-selector';
+import { getEffectiveView, taskViewKeys } from '@/lib/task-views-api';
 
 // ==================== Types ====================
 
@@ -103,6 +113,75 @@ interface TasksResponse {
   page: number;
   page_size: number;
   pages: number;
+}
+
+// ==================== Column Configuration ====================
+
+const COLUMN_HEADERS: Record<string, { label: string; defaultWidth?: string }> = {
+  checkbox: { label: '', defaultWidth: '40px' },
+  title: { label: 'Task', defaultWidth: 'auto' },
+  description: { label: '' }, // Description is nested under title
+  status: { label: 'Status', defaultWidth: '120px' },
+  category: { label: 'Category', defaultWidth: '140px' },
+  created_at: { label: 'Created', defaultWidth: '120px' },
+  created_by: { label: 'Created By', defaultWidth: '130px' },
+  assignee: { label: 'Assignee', defaultWidth: '150px' },
+  due_datetime: { label: 'Due Date', defaultWidth: '120px' },
+  evo_points: { label: 'Evo Points', defaultWidth: '90px' },
+  timer: { label: 'Timer', defaultWidth: '100px' },
+  actions: { label: 'Actions', defaultWidth: '80px' },
+};
+
+// Default column order
+const DEFAULT_COLUMNS = ['checkbox', 'title', 'status', 'category', 'created_at', 'created_by', 'assignee', 'due_datetime', 'evo_points', 'timer', 'actions'];
+
+// Type for visible columns with width info
+interface VisibleColumn {
+  field: string;
+  width?: string; // Now stored as percentage number string e.g., "15"
+}
+
+// Helper to convert width to CSS value
+function getWidthStyle(width: string | undefined, defaultWidth: string | undefined): React.CSSProperties | undefined {
+  // If width is a percentage number (from new system)
+  if (width && !width.includes('%') && !width.includes('px') && !isNaN(parseFloat(width))) {
+    return { width: `${width}%` };
+  }
+  // If width includes px or % already (legacy)
+  if (width && width !== 'auto') {
+    return { width };
+  }
+  // Fall back to default (pixel-based)
+  if (defaultWidth && defaultWidth !== 'auto') {
+    return { width: defaultWidth };
+  }
+  return undefined;
+}
+
+// Helper component - Dynamic table headers
+function DynamicTableHeaders({ visibleColumns }: { visibleColumns?: VisibleColumn[] | null }) {
+  // If no config, use defaults
+  const columns: VisibleColumn[] = visibleColumns || DEFAULT_COLUMNS.map(field => ({ field }));
+  
+  return (
+    <TableRow className="hover:bg-transparent">
+      {columns.map((col) => {
+        // Skip description as it's part of title cell
+        if (col.field === 'description') return null;
+        const header = COLUMN_HEADERS[col.field];
+        if (!header) return null;
+        return (
+          <TableHead 
+            key={col.field} 
+            style={getWidthStyle(col.width, header.defaultWidth)}
+            className={col.field === 'title' && !col.width ? 'w-auto' : undefined}
+          >
+            {header.label}
+          </TableHead>
+        );
+      })}
+    </TableRow>
+  );
 }
 
 // ==================== Status Config ====================
@@ -147,14 +226,29 @@ const statusConfig: Record<TaskStatus, { label: string; color: string; icon: Rea
 
 // ==================== Countdown Timer Component ====================
 
-function CountdownTimer({ dueDate }: { dueDate: string }) {
+function CountdownTimer({ 
+  dueDate, 
+  status, 
+  completedAt 
+}: { 
+  dueDate: string;
+  status?: string;
+  completedAt?: string | null;
+}) {
   const [remaining, setRemaining] = useState(0);
+  const isDone = status === 'done';
 
   useEffect(() => {
-    // Parse the due date and set to 00:00:00 of that day
     const dueDateObj = new Date(dueDate);
-    dueDateObj.setHours(0, 0, 0, 0);
     const dueTimestamp = dueDateObj.getTime();
+
+    if (isDone && completedAt) {
+      // For completed tasks, calculate time remaining at the moment of completion
+      const completedTimestamp = new Date(completedAt).getTime();
+      const diff = Math.floor((dueTimestamp - completedTimestamp) / 1000);
+      setRemaining(diff);
+      return; // No interval needed for completed tasks
+    }
 
     const updateRemaining = () => {
       const now = Date.now();
@@ -165,7 +259,7 @@ function CountdownTimer({ dueDate }: { dueDate: string }) {
     updateRemaining();
     const interval = setInterval(updateRemaining, 1000);
     return () => clearInterval(interval);
-  }, [dueDate]);
+  }, [dueDate, isDone, completedAt]);
 
   const isOverdue = remaining < 0;
   const absRemaining = Math.abs(remaining);
@@ -184,8 +278,15 @@ function CountdownTimer({ dueDate }: { dueDate: string }) {
   }
 
   return (
-    <span className={cn('text-xs font-mono tabular-nums', isOverdue ? 'text-red-600' : 'text-gray-600')}>
+    <span className={cn(
+      'text-xs font-mono tabular-nums',
+      isDone 
+        ? (isOverdue ? 'text-red-400' : 'text-green-600')  // Completed: green if on time, red if overdue
+        : (isOverdue ? 'text-red-600' : 'text-gray-600')   // Active: normal colors
+    )}>
+      {isDone && !isOverdue && '✓ '}
       {isOverdue ? '-' : ''}{display}
+      {isDone && isOverdue && ' (late)'}
     </span>
   );
 }
@@ -221,6 +322,138 @@ function ElapsedTimer({ startTime }: { startTime: string }) {
 }
 
 // ==================== Status Badge Component ====================
+
+// ==================== Evo Points Display Component ====================
+
+function EvoPointsDisplay({
+  task,
+}: {
+  task: Task;
+}) {
+  const [currentPoints, setCurrentPoints] = useState<number | null>(null);
+  
+  const maxPoints = task.evo_points;
+  const isDone = task.status === 'done';
+  
+  // For done tasks, show the earned points (which would be stored or use the last calculated value)
+  // For incomplete tasks, calculate in real-time
+  useEffect(() => {
+    if (!maxPoints || maxPoints <= 0) {
+      setCurrentPoints(null);
+      return;
+    }
+    
+    if (isDone) {
+      // For completed tasks, use earned_evo_points from the transaction record
+      setCurrentPoints(task.earned_evo_points ?? task.evo_points ?? 0);
+      return;
+    }
+    
+    // For active tasks, calculate real-time points
+    const calculatePoints = () => {
+      const now = new Date();
+      const dueDateTime = task.due_datetime ? new Date(task.due_datetime) : null;
+      
+      // If no due date or not overdue, return full points
+      if (!dueDateTime || now <= dueDateTime) {
+        setCurrentPoints(maxPoints);
+        return;
+      }
+      
+      // Handle reduction types
+      const reductionType = task.evo_reduction_type;
+      
+      if (reductionType === 'NONE' || !reductionType) {
+        // No reduction, always full points
+        setCurrentPoints(maxPoints);
+        return;
+      }
+      
+      if (reductionType === 'GRADUAL') {
+        const extensionEnd = task.evo_extension_end ? new Date(task.evo_extension_end) : null;
+        
+        if (!extensionEnd) {
+          // No extension end means 0 points after due
+          setCurrentPoints(0);
+          return;
+        }
+        
+        if (now >= extensionEnd) {
+          // Past extension end
+          setCurrentPoints(0);
+          return;
+        }
+        
+        // Calculate gradual decay
+        const totalDecayMs = extensionEnd.getTime() - dueDateTime.getTime();
+        const elapsedMs = now.getTime() - dueDateTime.getTime();
+        
+        if (totalDecayMs <= 0) {
+          setCurrentPoints(0);
+          return;
+        }
+        
+        const remainingRatio = 1 - (elapsedMs / totalDecayMs);
+        setCurrentPoints(Math.max(0, Math.floor(maxPoints * remainingRatio)));
+        return;
+      }
+      
+      if (reductionType === 'FIXED') {
+        const fixedReduction = task.evo_fixed_reduction_points ?? 0;
+        const extensionEnd = task.evo_extension_end ? new Date(task.evo_extension_end) : null;
+        const reducedPoints = Math.max(0, maxPoints - fixedReduction);
+        
+        if (!extensionEnd) {
+          // No extension end, reduced points always available
+          setCurrentPoints(reducedPoints);
+          return;
+        }
+        
+        if (now >= extensionEnd) {
+          // Past extension end, no points
+          setCurrentPoints(0);
+          return;
+        }
+        
+        // Within grace period, reduced points
+        setCurrentPoints(reducedPoints);
+        return;
+      }
+      
+      setCurrentPoints(maxPoints);
+    };
+    
+    calculatePoints();
+    // Update every second for real-time display
+    const interval = setInterval(calculatePoints, 1000);
+    return () => clearInterval(interval);
+  }, [task.due_datetime, task.evo_reduction_type, task.evo_extension_end, task.evo_fixed_reduction_points, task.earned_evo_points, maxPoints, isDone]);
+  
+  // No evo points configured
+  if (!maxPoints || maxPoints <= 0) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+  
+  if (currentPoints === null) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+  
+  // For completed tasks
+  if (isDone) {
+    return (
+      <span className="text-sm tabular-nums">+{currentPoints}</span>
+    );
+  }
+  
+  // For incomplete tasks
+  const isReduced = currentPoints < maxPoints;
+  
+  return (
+    <span className="text-sm tabular-nums">
+      {currentPoints}{isReduced && `/${maxPoints}`}
+    </span>
+  );
+}
 
 function StatusBadge({ status, isOverdue }: { status: TaskStatus; isOverdue?: boolean }) {
   const displayStatus = isOverdue && status !== 'done' ? 'overdue' : status;
@@ -504,6 +737,18 @@ function CategoryManagerDialog({
 
 // ==================== Add Task Dialog ====================
 
+const DAYS_OF_WEEK = [
+  { value: '0', label: 'Mon' },
+  { value: '1', label: 'Tue' },
+  { value: '2', label: 'Wed' },
+  { value: '3', label: 'Thu' },
+  { value: '4', label: 'Fri' },
+  { value: '5', label: 'Sat' },
+  { value: '6', label: 'Sun' },
+];
+
+type TaskMode = 'one-time' | 'recurring';
+
 function AddTaskDialog({
   open,
   onOpenChange,
@@ -517,38 +762,144 @@ function AddTaskDialog({
   staffList?: StaffMember[];
   preselectedAssignee?: StaffMember | null;
 }) {
-  const [formData, setFormData] = useState<CreateTaskPayload>({
-    title: '',
-    description: '',
-    category_id: undefined,
-    due_date: '',
-    assigned_to_user_id: undefined,
-  });
+  // Basic task fields
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [assignedToUserId, setAssignedToUserId] = useState<number | undefined>(undefined);
+  
+  // Evo Points fields
+  const [evoPoints, setEvoPoints] = useState<number | undefined>(undefined);
+  const [evoReductionType, setEvoReductionType] = useState<EvoReductionType>('NONE');
+  const [evoExtensionEnd, setEvoExtensionEnd] = useState('');
+  const [evoFixedReductionPoints, setEvoFixedReductionPoints] = useState<number | undefined>(undefined);
+  
+  // Task mode
+  const [taskMode, setTaskMode] = useState<TaskMode>('one-time');
+  
+  // One-time task fields
+  const [dueDateTime, setDueDateTime] = useState('');
+  
+  // Recurring task fields
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('daily');
+  const [selectedDays, setSelectedDays] = useState<string[]>(['0', '1', '2', '3', '4']); // Mon-Fri default
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [startTime, setStartTime] = useState('09:00');
+  const [dueTime, setDueTime] = useState('17:00');
+  const [createTaskToday, setCreateTaskToday] = useState(true);
+  
   const queryClient = useQueryClient();
 
-  // Update assigned_to_user_id when preselectedAssignee changes
+  // Update assigned user when preselectedAssignee changes
   useEffect(() => {
     if (preselectedAssignee) {
-      setFormData(prev => ({ ...prev, assigned_to_user_id: preselectedAssignee.id }));
+      setAssignedToUserId(preselectedAssignee.id);
     }
   }, [preselectedAssignee, open]);
 
-  const createMutation = useMutation({
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setTitle('');
+      setDescription('');
+      setCategoryId(undefined);
+      setAssignedToUserId(undefined);
+      setEvoPoints(undefined);
+      setEvoReductionType('NONE');
+      setEvoExtensionEnd('');
+      setEvoFixedReductionPoints(undefined);
+      setTaskMode('one-time');
+      setDueDateTime('');
+      setRecurrenceType('daily');
+      setSelectedDays(['0', '1', '2', '3', '4']);
+      setScheduledDate('');
+      setStartTime('09:00');
+      setDueTime('17:00');
+      setCreateTaskToday(true);
+    }
+  }, [open]);
+
+  // Check if today is one of the selected days (for weekly recurrence)
+  const todayWeekday = new Date().getDay();
+  // Convert JS weekday (0=Sun) to our format (0=Mon)
+  const todayOurFormat = todayWeekday === 0 ? '6' : String(todayWeekday - 1);
+  const isTodaySelected = selectedDays.includes(todayOurFormat);
+
+  const createTaskMutation = useMutation({
     mutationFn: (data: CreateTaskPayload) => api.post('/tasks', data),
     onSuccess: () => {
       toast.success(preselectedAssignee ? 'Task assigned' : 'Task created');
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       onOpenChange(false);
-      setFormData({ title: '', description: '', category_id: undefined, due_date: '', assigned_to_user_id: undefined });
     },
     onError: () => toast.error(preselectedAssignee ? 'Failed to assign task' : 'Failed to create task'),
   });
 
+  const createTemplateMutation = useMutation({
+    mutationFn: (data: CreateRecurringTaskTemplatePayload) => api.post('/tasks/recurring-templates', data),
+    onSuccess: () => {
+      toast.success(createTaskToday && recurrenceType !== 'once' 
+        ? 'Recurring schedule created with task for today' 
+        : 'Recurring schedule created');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
+      onOpenChange(false);
+    },
+    onError: () => toast.error('Failed to create recurring schedule'),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (taskMode === 'one-time') {
+      // Create a one-time task
+      const taskData: CreateTaskPayload = {
+        title,
+        description: description || undefined,
+        category_id: categoryId,
+        due_datetime: dueDateTime || undefined,
+        assigned_to_user_id: assignedToUserId,
+        // Evo Points fields
+        evo_points: evoPoints,
+        evo_reduction_type: evoPoints ? evoReductionType : undefined,
+        evo_extension_end: evoReductionType === 'GRADUAL' && evoExtensionEnd ? evoExtensionEnd : undefined,
+        evo_fixed_reduction_points: evoReductionType === 'FIXED' ? evoFixedReductionPoints : undefined,
+      };
+      await createTaskMutation.mutateAsync(taskData);
+    } else {
+      // Create a recurring template
+      const templateData: CreateRecurringTaskTemplatePayload = {
+        title,
+        description: description || undefined,
+        category_id: categoryId,
+        recurrence_type: recurrenceType,
+        days_of_week: recurrenceType === 'weekly' ? selectedDays.sort().join(',') : undefined,
+        scheduled_date: recurrenceType === 'once' ? scheduledDate : undefined,
+        start_time: startTime ? `${startTime}:00` : undefined,
+        due_time: dueTime ? `${dueTime}:00` : undefined,
+        assigned_to_user_id: assignedToUserId,
+        create_task_today: recurrenceType !== 'once' && createTaskToday,
+      };
+      await createTemplateMutation.mutateAsync(templateData);
+    }
+  };
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev => 
+      prev.includes(day) 
+        ? prev.filter(d => d !== day)
+        : [...prev, day]
+    );
+  };
+
+  const isPending = createTaskMutation.isPending || createTemplateMutation.isPending;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(formData); }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>
               {preselectedAssignee 
@@ -558,11 +909,26 @@ function AddTaskDialog({
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
+            {/* Task Type Selection */}
+            <Tabs value={taskMode} onValueChange={(v) => setTaskMode(v as TaskMode)} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="one-time" className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  One-time
+                </TabsTrigger>
+                <TabsTrigger value="recurring" className="flex items-center gap-2">
+                  <Repeat className="h-4 w-4" />
+                  Recurring
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {/* Common Fields */}
             <div className="grid gap-2">
               <Label>Title</Label>
               <Input
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="What needs to be done?"
                 required
               />
@@ -571,10 +937,10 @@ function AddTaskDialog({
             <div className="grid gap-2">
               <Label>Description</Label>
               <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add more details..."
-                rows={3}
+                rows={2}
               />
             </div>
 
@@ -582,8 +948,8 @@ function AddTaskDialog({
               <div className="grid gap-2">
                 <Label>Category</Label>
                 <Select
-                  value={formData.category_id?.toString() || '__none__'}
-                  onValueChange={(v) => setFormData({ ...formData, category_id: v === '__none__' ? undefined : parseInt(v) })}
+                  value={categoryId?.toString() || '__none__'}
+                  onValueChange={(v) => setCategoryId(v === '__none__' ? undefined : parseInt(v))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select..." />
@@ -599,23 +965,26 @@ function AddTaskDialog({
                 </Select>
               </div>
 
-              <div className="grid gap-2">
-                <Label>Due Date</Label>
-                <Input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                />
-              </div>
+              {/* One-time: Due Date & Time */}
+              {taskMode === 'one-time' && (
+                <div className="grid gap-2">
+                  <Label>Due Date & Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={dueDateTime}
+                    onChange={(e) => setDueDateTime(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Show assignee selector only when not preselected */}
+            {/* Assignee selector */}
             {!preselectedAssignee && staffList && staffList.length > 0 && (
               <div className="grid gap-2">
                 <Label>Assign To</Label>
                 <Select
-                  value={formData.assigned_to_user_id?.toString() || '__none__'}
-                  onValueChange={(v) => setFormData({ ...formData, assigned_to_user_id: v === '__none__' ? undefined : parseInt(v) })}
+                  value={assignedToUserId?.toString() || '__none__'}
+                  onValueChange={(v) => setAssignedToUserId(v === '__none__' ? undefined : parseInt(v))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Myself" />
@@ -647,16 +1016,197 @@ function AddTaskDialog({
                 </div>
               </div>
             )}
+
+            {/* Evo Points Section - Collapsible */}
+            <details className="group border rounded-lg">
+              <summary className="flex items-center justify-between px-3 py-2 cursor-pointer select-none hover:bg-muted/50">
+                <span className="text-sm font-medium">Evo Points</span>
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-3 pb-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Points</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={evoPoints ?? ''}
+                      onChange={(e) => setEvoPoints(e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="0"
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Late Penalty</Label>
+                    <Select
+                      value={evoReductionType}
+                      onValueChange={(v) => setEvoReductionType(v as EvoReductionType)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">None</SelectItem>
+                        <SelectItem value="GRADUAL">Gradual</SelectItem>
+                        <SelectItem value="FIXED">Fixed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {evoReductionType === 'GRADUAL' && (
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Decay End Time</Label>
+                    <Input
+                      type="datetime-local"
+                      value={evoExtensionEnd}
+                      onChange={(e) => setEvoExtensionEnd(e.target.value)}
+                      className="h-8"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Points will gradually decrease from full value to 0 between due time and this end time.
+                    </p>
+                  </div>
+                )}
+
+                {evoReductionType === 'FIXED' && (
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Deduction Amount</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={evoFixedReductionPoints ?? ''}
+                      onChange={(e) => setEvoFixedReductionPoints(e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="0"
+                      className="h-8"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This amount will be subtracted from the points if completed after due time.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </details>
+
+            {/* Recurring Task Options */}
+            {taskMode === 'recurring' && (
+              <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+                <div className="grid gap-2">
+                  <Label>Schedule Type</Label>
+                  <Select value={recurrenceType} onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily (every day)</SelectItem>
+                      <SelectItem value="weekly">Weekly (specific days)</SelectItem>
+                      <SelectItem value="once">Scheduled (specific date)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {recurrenceType === 'weekly' && (
+                  <div className="grid gap-2">
+                    <Label>Days of Week</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {DAYS_OF_WEEK.map((day) => (
+                        <Button
+                          key={day.value}
+                          type="button"
+                          variant={selectedDays.includes(day.value) ? 'default' : 'outline'}
+                          size="sm"
+                          className="w-12"
+                          onClick={() => toggleDay(day.value)}
+                        >
+                          {day.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {recurrenceType === 'once' && (
+                  <div className="grid gap-2">
+                    <Label>Scheduled Date</Label>
+                    <Input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      required={recurrenceType === 'once'}
+                    />
+                  </div>
+                )}
+
+                {/* Time settings */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Start Time (IST)</Label>
+                    <Input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Due Time (IST)</Label>
+                    <Input
+                      type="time"
+                      value={dueTime}
+                      onChange={(e) => setDueTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Create task for today option */}
+                {recurrenceType !== 'once' && (
+                  <div className="flex items-center space-x-2 pt-2 border-t">
+                    <Checkbox
+                      id="create-today"
+                      checked={createTaskToday}
+                      onCheckedChange={(checked) => setCreateTaskToday(checked as boolean)}
+                      disabled={recurrenceType === 'weekly' && !isTodaySelected}
+                    />
+                    <label
+                      htmlFor="create-today"
+                      className={cn(
+                        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed",
+                        recurrenceType === 'weekly' && !isTodaySelected && "text-muted-foreground"
+                      )}
+                    >
+                      Also create task for today
+                    </label>
+                  </div>
+                )}
+
+                {/* Info text */}
+                <p className="text-xs text-muted-foreground pt-2">
+                  {recurrenceType === 'daily' && 'A new task will be created every day at midnight (IST).'}
+                  {recurrenceType === 'weekly' && selectedDays.length > 0 && 
+                    `Tasks will be created on ${selectedDays.sort().map(d => DAYS_OF_WEEK.find(day => day.value === d)?.label).join(', ')} at midnight (IST).`}
+                  {recurrenceType === 'once' && scheduledDate && 
+                    `Task will be created on ${format(new Date(scheduledDate + 'T00:00:00'), 'PPP')} at midnight (IST).`}
+                  {recurrenceType === 'weekly' && !isTodaySelected && createTaskToday &&
+                    ' Today is not a selected day, so no task will be created today.'}
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending || !formData.title.trim()}>
-              {createMutation.isPending 
-                ? (preselectedAssignee ? 'Assigning...' : 'Creating...') 
-                : (preselectedAssignee ? 'Assign Task' : 'Create Task')}
+            <Button 
+              type="submit" 
+              disabled={isPending || !title.trim() || (taskMode === 'recurring' && recurrenceType === 'once' && !scheduledDate)}
+            >
+              {isPending 
+                ? 'Creating...' 
+                : taskMode === 'one-time'
+                  ? (preselectedAssignee ? 'Assign Task' : 'Create Task')
+                  : (createTaskToday && recurrenceType !== 'once' ? 'Create & Schedule' : 'Schedule')
+              }
             </Button>
           </DialogFooter>
         </form>
@@ -673,6 +1223,7 @@ function TaskRow({
   staffList,
   isAdmin,
   isAdminAssigned,
+  visibleColumns,
   onUpdate,
   onDelete,
   onStart,
@@ -683,6 +1234,7 @@ function TaskRow({
   staffList?: StaffMember[];
   isAdmin?: boolean;
   isAdminAssigned?: boolean;
+  visibleColumns?: VisibleColumn[] | null;
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number) => void;
   onStart: (id: number) => void;
@@ -692,6 +1244,12 @@ function TaskRow({
   const displayStatus = task.is_overdue && task.status !== 'done' ? 'overdue' : task.status;
   const isCompleted = task.status === 'done';
 
+  // Helper to check if a column should be displayed
+  const showColumn = (field: string) => {
+    if (!visibleColumns) return true; // Show all if not configured
+    return visibleColumns.some(col => col.field === field);
+  };
+
   return (
     <TableRow className={cn(
       'group',
@@ -699,29 +1257,36 @@ function TaskRow({
       isAdminAssigned && !isCompleted && 'bg-blue-100/60 hover:bg-blue-50'
     )}>
       {/* Checkbox */}
-      <TableCell className="w-10">
-        <Checkbox
-          checked={isCompleted}
-          onCheckedChange={(checked) => {
-            if (checked) onComplete(task.id);
-          }}
-          disabled={isCompleted}
-        />
+      {showColumn('checkbox') && (
+      <TableCell className="w-10 text-center">
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={isCompleted}
+            onCheckedChange={(checked) => {
+              if (checked) onComplete(task.id);
+            }}
+            disabled={isCompleted}
+          />
+        </div>
       </TableCell>
+      )}
 
       {/* Title */}
+      {showColumn('title') && (
       <TableCell className="font-medium min-w-[200px]">
         <div className={cn(isCompleted && 'line-through text-gray-400')}>
           {task.title}
         </div>
-        {task.description && (
+        {showColumn('description') && task.description && (
           <div className="text-xs text-muted-foreground truncate max-w-[300px]">
             {task.description}
           </div>
         )}
       </TableCell>
+      )}
 
       {/* Status */}
+      {showColumn('status') && (
       <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -748,8 +1313,10 @@ function TaskRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
+      )}
 
       {/* Category */}
+      {showColumn('category') && (
       <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -778,15 +1345,19 @@ function TaskRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
+      )}
 
       {/* Created On */}
+      {showColumn('created_at') && (
       <TableCell>
         <span className="text-sm text-gray-600">
           {format(new Date(task.created_at), 'MMM d, yyyy')}
         </span>
       </TableCell>
+      )}
 
       {/* Created By */}
+      {showColumn('created_by') && (
       <TableCell>
         {task.created_by_name ? (
           <div className="flex items-center gap-2">
@@ -799,8 +1370,10 @@ function TaskRow({
           <span className="text-xs text-gray-400">—</span>
         )}
       </TableCell>
+      )}
 
       {/* Assigned To - Editable for Admin */}
+      {showColumn('assignee') && (
       <TableCell>
         {isAdmin && staffList ? (
           <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
@@ -872,32 +1445,49 @@ function TaskRow({
           <span className="text-xs text-gray-400">—</span>
         )}
       </TableCell>
+      )}
 
       {/* Due Date */}
+      {showColumn('due_datetime') && (
       <TableCell>
-        {task.due_date ? (
+        {task.due_datetime ? (
           <span className={cn('text-sm', task.is_overdue && 'text-red-600 font-medium')}>
-            {format(new Date(task.due_date), 'MMM d, yyyy')}
+            {format(new Date(task.due_datetime), 'MMM d, yyyy h:mm a')}
           </span>
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
       </TableCell>
+      )}
+
+      {/* Evo Points */}
+      {showColumn('evo_points') && (
+      <TableCell>
+        <EvoPointsDisplay task={task} />
+      </TableCell>
+      )}
 
       {/* Timer */}
+      {showColumn('timer') && (
       <TableCell>
-        {task.due_date ? (
-          <CountdownTimer dueDate={task.due_date} />
+        {task.due_datetime ? (
+          <CountdownTimer 
+            dueDate={task.due_datetime} 
+            status={task.status}
+            completedAt={task.end_time}
+          />
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
       </TableCell>
+      )}
 
       {/* Actions */}
+      {showColumn('actions') && (
       <TableCell className="w-10">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="sm">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -922,6 +1512,7 @@ function TaskRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -943,6 +1534,34 @@ export default function TasksPage() {
   const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [currentView, setCurrentView] = useState<TaskViewStyle | null>(null);
+
+  // Fetch effective view
+  const { data: effectiveViewData } = useQuery({
+    queryKey: taskViewKeys.effective(project?.id ?? null, 0),
+    queryFn: getEffectiveView,
+    enabled: !!project?.id,
+    staleTime: 30000,
+  });
+
+  // Update current view when effective view changes
+  useEffect(() => {
+    if (effectiveViewData?.view) {
+      setCurrentView(effectiveViewData.view);
+    }
+  }, [effectiveViewData]);
+
+  // Get visible columns sorted by order (with width info)
+  const visibleColumns = useMemo((): VisibleColumn[] | null => {
+    if (!currentView?.column_config) {
+      // Default: all columns visible
+      return null;
+    }
+    return currentView.column_config
+      .filter(col => col.visible)
+      .sort((a, b) => a.order - b.order)
+      .map(col => ({ field: col.field, width: col.width }));
+  }, [currentView]);
 
   // Data Queries
   const { data: myTasks, isLoading: loadingMyTasks } = useQuery({
@@ -977,6 +1596,13 @@ export default function TasksPage() {
     enabled: !!project?.id && isProjectAdmin,
   });
 
+  // Evo Points Balance
+  const { data: evoPointsBalance } = useQuery({
+    queryKey: ['evo-points-balance', project?.id],
+    queryFn: () => api.get<EvoPointBalance>('/evo-points/me'),
+    enabled: !!project?.id,
+  });
+
   // Mutations
   const updateTaskMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Task> }) =>
@@ -999,11 +1625,22 @@ export default function TasksPage() {
   });
 
   const completeTaskMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/tasks/${id}/complete`),
-    onSuccess: () => {
-      toast.success('Task completed');
+    mutationFn: (id: number) => api.post<TaskCompletionResponse>(`/tasks/${id}/complete`),
+    onSuccess: (data) => {
+      if (data.points_earned && data.points_earned > 0) {
+        if (data.was_late && data.original_points) {
+          toast.success(
+            `Task completed! +${data.points_earned} Evo Points (${data.original_points - data.points_earned} reduced for late completion)`
+          );
+        } else {
+          toast.success(`Task completed! +${data.points_earned} Evo Points`);
+        }
+      } else {
+        toast.success('Task completed');
+      }
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['evo-points-balance'] });
     },
     onError: () => toast.error('Failed to complete task'),
   });
@@ -1096,9 +1733,17 @@ export default function TasksPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
-            <p className="text-muted-foreground">Manage and track your work</p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
+              <p className="text-muted-foreground">Manage and track your work</p>
+            </div>
+            {evoPointsBalance && (
+              <div className="flex items-center gap-2 border px-5 py-2.5 rounded-md">
+                <span className="text-xl text-muted-foreground">Evo Points</span>
+                <span className="text-xl font-semibold">{evoPointsBalance.current_balance.toLocaleString()}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {isProjectAdmin && (
@@ -1107,6 +1752,7 @@ export default function TasksPage() {
                 Categories
               </Button>
             )}
+            <TaskViewSelector onViewChange={(view) => setCurrentView(view)} />
             <Button onClick={() => setShowAddTask(true)}>
               <Plus className="h-4 w-4 mr-2" />
               {selectedAssignee ? 'Assign Task' : 'New Task'}
@@ -1319,20 +1965,9 @@ export default function TasksPage() {
                 {/* Group Table */}
                 {!collapsedGroups.has(groupKey) && (
                   <Card className="rounded-t-none border-t-0">
-                    <Table>
+                    <Table className="table-fixed">
                       <TableHeader>
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="w-10"></TableHead>
-                          <TableHead>Task</TableHead>
-                          <TableHead className="w-[120px]">Status</TableHead>
-                          <TableHead className="w-[140px]">Category</TableHead>
-                          <TableHead className="w-[110px]">Created On</TableHead>
-                          <TableHead className="w-[120px]">Created By</TableHead>
-                          <TableHead className="w-[150px]">Assignee</TableHead>
-                          <TableHead className="w-[110px]">Due Date</TableHead>
-                          <TableHead className="w-[80px]">Timer</TableHead>
-                          <TableHead className="w-10"></TableHead>
-                        </TableRow>
+                        <DynamicTableHeaders visibleColumns={visibleColumns} />
                       </TableHeader>
                       <TableBody>
                         {group.tasks.map((task) => (
@@ -1343,6 +1978,7 @@ export default function TasksPage() {
                             staffList={staffList}
                             isAdmin={isProjectAdmin}
                             isAdminAssigned={task.created_by_id !== task.assigned_to_user_id}
+                            visibleColumns={visibleColumns}
                             onUpdate={(id, data) => updateTaskMutation.mutate({ id, data })}
                             onDelete={(id) => deleteTaskMutation.mutate(id)}
                             onStart={(id) => startTaskMutation.mutate(id)}
@@ -1359,20 +1995,9 @@ export default function TasksPage() {
         ) : (
           // Flat view - single table
           <Card>
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-10"></TableHead>
-                  <TableHead>Task</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[140px]">Category</TableHead>
-                  <TableHead className="w-[110px]">Created On</TableHead>
-                  <TableHead className="w-[120px]">Created By</TableHead>
-                  <TableHead className="w-[150px]">Assignee</TableHead>
-                  <TableHead className="w-[110px]">Due Date</TableHead>
-                  <TableHead className="w-[80px]">Timer</TableHead>
-                  <TableHead className="w-10"></TableHead>
-                </TableRow>
+                <DynamicTableHeaders visibleColumns={visibleColumns} />
               </TableHeader>
               <TableBody>
                 {tasks.map((task) => (
@@ -1383,6 +2008,7 @@ export default function TasksPage() {
                     staffList={staffList}
                     isAdmin={isProjectAdmin}
                     isAdminAssigned={task.created_by_id !== task.assigned_to_user_id}
+                    visibleColumns={visibleColumns}
                     onUpdate={(id, data) => updateTaskMutation.mutate({ id, data })}
                     onDelete={(id) => deleteTaskMutation.mutate(id)}
                     onStart={(id) => startTaskMutation.mutate(id)}
