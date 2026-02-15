@@ -26,7 +26,7 @@ export default function ProjectSuspendedPage() {
               </Link>
             </Button>
             <Button asChild>
-              <a href="mailto:support@schoolops.com">
+              <a href="mailto:support@trackbit.com">
                 <Mail className="mr-2 h-4 w-4" />
                 Contact Support
               </a>

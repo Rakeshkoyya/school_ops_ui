@@ -21,17 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bell, ChevronDown, LogOut, Settings, User, Building2, Shield } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Settings, User, Shield } from 'lucide-react';
+import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import type { UserRoleInfo } from '@/types';
 import { normalizeRoleName } from '@/types';
 
-interface TopBarProps {
-  sidebarCollapsed: boolean;
-}
-
-export function TopBar({ sidebarCollapsed }: TopBarProps) {
+export function TopBar() {
   const { user, logout, projects, userRoles, setActivePermissions, getProjectWithRole } = useAuth();
   const { project, setProject } = useProject();
   const router = useRouter();
@@ -95,31 +92,35 @@ export function TopBar({ sidebarCollapsed }: TopBarProps) {
     .slice(0, 2) || 'U';
 
   return (
-    <header
-      className={`fixed top-0 right-0 z-30 flex h-16 items-center justify-between border-b bg-card px-6 transition-all duration-300 ${
-        sidebarCollapsed ? 'left-16' : 'left-64'
-      }`}
-    >
-      {/* Left side - Page title or breadcrumb area */}
-      <div className="flex items-center gap-4">
-        {project && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Building2 className="h-4 w-4" />
-            <span>{project.name}</span>
-            {project.role_name && (
-              <>
-                <span className="text-muted-foreground/50">•</span>
-                <Badge variant="outline" className="text-xs">
-                  {project.role_name}
-                </Badge>
-              </>
-            )}
+    <header className="fixed top-0 left-0 right-0 z-50 flex h-16 items-center justify-between border-b bg-card px-6">
+      {/* Left side - Whitelabel Project Logo */}
+      <div className="flex items-center">
+        {project ? (
+          <div className="relative h-10 w-auto">
+            <Image
+              src={project.logo_url || '/default-logo.svg'}
+              alt={project.name}
+              width={120}
+              height={40}
+              className="h-10 w-auto object-contain"
+              priority
+            />
           </div>
-        )}
-        {user?.is_super_admin && !project && (
+        ) : user?.is_super_admin ? (
           <div className="flex items-center gap-2 text-sm">
-            <Shield className="h-4 w-4 text-primary" />
+            <Shield className="h-5 w-5 text-primary" />
             <span className="font-medium">Super Admin Mode</span>
+          </div>
+        ) : (
+          <div className="relative h-10 w-auto">
+            <Image
+              src="/default-logo.svg"
+              alt="Trackbit"
+              width={120}
+              height={40}
+              className="h-10 w-auto object-contain"
+              priority
+            />
           </div>
         )}
       </div>

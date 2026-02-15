@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" fill="none">
+  <rect x="4" y="10" width="28" height="20" rx="3" fill="#3b82f6"/>
+  <path d="M10 16 L18 24 L30 12" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="38" y="26" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#1e293b">Trackbit</text>
+</svg>

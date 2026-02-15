@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, School, AlertCircle } from 'lucide-react';
+import { Loader2, CheckSquare, AlertCircle } from 'lucide-react';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -51,10 +51,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <School className="h-8 w-8 text-primary" />
+            <CheckSquare className="h-8 w-8 text-primary" />
           </div>
           <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
-          <CardDescription>Sign in to access School Operations</CardDescription>
+          <CardDescription>Sign in to access Trackbit</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (

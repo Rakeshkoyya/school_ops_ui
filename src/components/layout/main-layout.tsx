@@ -25,8 +25,8 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <TopBar />
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-      <TopBar sidebarCollapsed={sidebarCollapsed} />
       <main
         className={cn(
           'min-h-screen pt-16 transition-all duration-300',

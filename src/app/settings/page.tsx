@@ -139,10 +139,10 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Project Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="My School" {...field} />
+                            <Input placeholder="My Project" {...field} />
                           </FormControl>
                           <FormDescription>
-                            This is the display name for your school/project
+                            This is the display name for your project
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

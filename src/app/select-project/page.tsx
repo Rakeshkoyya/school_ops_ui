@@ -7,7 +7,7 @@ import { useProject } from '@/contexts/project-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { School, Building2, ArrowRight, LogOut } from 'lucide-react';
+import { CheckSquare, Building2, ArrowRight, LogOut } from 'lucide-react';
 import type { ProjectInfo, UserRoleInfo
 } from '@/types';
 
@@ -43,11 +43,11 @@ export default function SelectProjectPage() {
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <School className="h-8 w-8 text-primary" />
+            <CheckSquare className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold mb-2">Select a School</h1>
+          <h1 className="text-2xl font-bold mb-2">Select a Project</h1>
           <p className="text-muted-foreground">
-            Choose which school and role you want to work with today
+            Choose which project and role you want to work with today
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export default function SelectProjectPage() {
               <Building2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No Projects Available</h3>
               <p className="text-muted-foreground mb-4">
-                You don&apos;t have access to any schools yet. Please contact your administrator.
+                You don&apos;t have access to any projects yet. Please contact your administrator.
               </p>
             </CardContent>
           </Card>

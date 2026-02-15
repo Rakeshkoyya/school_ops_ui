@@ -168,7 +168,7 @@ export default function NotificationsPage() {
     },
     {
       id: 6,
-      title: 'Welcome to School Ops',
+      title: 'Welcome to Trackbit',
       message: 'Welcome! Get started by exploring the dashboard and completing your profile.',
       type: 'success',
       is_read: true,

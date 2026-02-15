@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, setAccessToken, clearAccessToken, getAccessToken, setCurrentProjectId } from '@/lib/api-client';
+import { api, setAccessToken, clearAccessToken, getAccessToken } from '@/lib/api-client';
 import type { User, ProjectInfo, UserRoleInfo, ProjectWithRole, AuthMeResponse, AuthResponse } from '@/types';
 
 // Helper to combine ProjectInfo and UserRoleInfo into ProjectWithRole for easier frontend use
@@ -89,9 +89,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
             );
             if (matchingRole && matchingRole.permissions) {
               activePermissions = matchingRole.permissions;
+            } else {
+              // Stored project doesn't belong to this user, clear it
+              localStorage.removeItem('current_project');
+              localStorage.removeItem('current_project_id');
             }
           } catch {
-            // Ignore parse errors
+            // Invalid stored project, clear it
+            localStorage.removeItem('current_project');
+            localStorage.removeItem('current_project_id');
           }
         }
       }
@@ -121,6 +127,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [refreshAuth]);
 
   const login = async (username: string, password: string) => {
+    // Clear stale project data before login to ensure fresh state
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('current_project');
+      localStorage.removeItem('current_project_id');
+      // Dispatch custom event to notify ProjectContext in the same tab
+      window.dispatchEvent(new CustomEvent('project-cleared'));
+    }
+    
     const response = await api.post<AuthResponse>('/auth/login', {
       username,
       password,
@@ -140,19 +154,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const userProjects = authData?.projects ?? [];
     const roles = authData?.userRoles ?? [];
     
+    // If user has exactly one project and role, go to dashboard (AuthGuard will auto-select)
+    // If user has multiple projects or roles, go to select-project
+    // If user has no projects, go to dashboard (will show empty state)
     if (userProjects.length === 1 && roles.length === 1) {
-      // Auto-select the only project/role
-      const project = userProjects[0];
-      const role = roles[0];
-      const combined = combineProjectAndRole(project, role);
-      
-      setCurrentProjectId(project.id);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('current_project', JSON.stringify(combined));
-      }
-      if (role.permissions) {
-        setPermissions(role.permissions);
-      }
       router.push('/dashboard');
     } else if (userProjects.length >= 1) {
       router.push('/select-project');
@@ -168,6 +173,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUserRoles([]);
     setPermissions([]);
     setIsFirstLogin(false);
+    // Clear project data from localStorage to prevent stale data on next login
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('current_project');
+      localStorage.removeItem('current_project_id');
+      // Dispatch custom event to notify ProjectContext in the same tab
+      window.dispatchEvent(new CustomEvent('project-cleared'));
+    }
     router.push('/auth/login');
   }, [router]);
 

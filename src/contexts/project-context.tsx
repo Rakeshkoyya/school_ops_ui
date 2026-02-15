@@ -52,6 +52,50 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     }
   }, [project]);
 
+  // Listen for storage changes (e.g., when logout clears project data)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'current_project') {
+        if (e.newValue === null) {
+          // Project was cleared (e.g., on logout)
+          setProjectState(null);
+        } else {
+          // Project was changed
+          try {
+            const parsed = JSON.parse(e.newValue);
+            setProjectState(parsed);
+          } catch {
+            setProjectState(null);
+          }
+        }
+      }
+    };
+
+    // Handle custom event for same-tab notifications (e.g., logout)
+    const handleProjectCleared = () => {
+      setProjectState(null);
+    };
+
+    // Handle custom event for when a project is selected (e.g., on login auto-select)
+    const handleProjectSelected = (e: Event) => {
+      const customEvent = e as CustomEvent<ProjectWithRole>;
+      if (customEvent.detail) {
+        setProjectState(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('project-cleared', handleProjectCleared);
+    window.addEventListener('project-selected', handleProjectSelected);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('project-cleared', handleProjectCleared);
+      window.removeEventListener('project-selected', handleProjectSelected);
+    };
+  }, []);
+
   const setProject = useCallback((newProject: ProjectWithRole) => {
     setProjectState(newProject);
     setCurrentProjectId(newProject.id);

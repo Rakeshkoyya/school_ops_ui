@@ -17,12 +17,20 @@ const PUBLIC_ROUTES = ['/auth/login', '/auth/forgot-password', '/auth/reset-pass
 const NO_PROJECT_ROUTES = ['/select-project', '/auth/login', '/auth/forgot-password', '/auth/reset-password', '/admin'];
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { isAuthenticated, isLoading, projects, userRoles, user, setActivePermissions } = useAuth();
-  const { isProjectSelected, project } = useProject();
+  const { isAuthenticated, isLoading, projects, userRoles, user, setActivePermissions, getProjectWithRole } = useAuth();
+  const { isProjectSelected, project, setProject } = useProject();
   const router = useRouter();
   const pathname = usePathname();
   const [isReady, setIsReady] = useState(false);
   const lastProjectKey = useRef<string | null>(null);
+  const hasAutoSelected = useRef(false);
+
+  // Reset auto-selection flag when user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasAutoSelected.current = false;
+    }
+  }, [isAuthenticated]);
 
   // Update permissions when project/role changes
   useEffect(() => {
@@ -78,6 +86,24 @@ export function AuthGuard({ children }: AuthGuardProps) {
       return;
     }
 
+    // Auto-select project if user has exactly one project and one role, and no project is currently selected
+    if (isAuthenticated && !isProjectSelected && !hasAutoSelected.current && !isSuperAdmin) {
+      const roleCount = userRoles?.length ?? 0;
+      if (projectCount === 1 && roleCount === 1) {
+        const singleProject = projects[0];
+        const singleRole = userRoles[0];
+        const combined = getProjectWithRole(singleProject.id, singleRole.role_id);
+        if (combined) {
+          hasAutoSelected.current = true;
+          setProject(combined);
+          if (singleRole.permissions) {
+            setActivePermissions(singleRole.permissions);
+          }
+          // Don't return here - let the flow continue to setIsReady
+        }
+      }
+    }
+
     // Redirect to project selector if needed (only for non-super-admin multi-project users without selection)
     // Super admins can access dashboard without selecting a project
     if (isAuthenticated && requiresProject && projectCount > 1 && !isProjectSelected && !isSuperAdmin) {
@@ -87,7 +113,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     // All checks passed, mark as ready to render
     setIsReady(true);
-  }, [isAuthenticated, isLoading, isProjectSelected, pathname, projects, router, user]);
+  }, [isAuthenticated, isLoading, isProjectSelected, pathname, projects, router, user, userRoles, setProject, setActivePermissions, getProjectWithRole]);
 
   // Show loading state while auth is loading
   if (isLoading) {

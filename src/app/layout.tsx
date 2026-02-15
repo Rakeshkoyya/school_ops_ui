@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "School Operations | Management Platform",
-  description: "Enterprise-grade school operations management platform for administrators, teachers, and staff",
-  keywords: ["school", "management", "education", "administration", "attendance", "exams"],
+  title: "Trackbit | Management Platform",
+  description: "Enterprise-grade operations management platform for tracking tasks, attendance, and more",
+  keywords: ["tracking", "management", "operations", "administration", "attendance", "tasks"],
 };
 
 export default function RootLayout({
