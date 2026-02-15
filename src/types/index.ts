@@ -414,6 +414,11 @@ export interface RecurringTaskTemplate {
   created_by_id: number;
   created_at: string;
   updated_at: string;
+  // Evo Points fields
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_time?: string;
+  evo_fixed_reduction_points?: number;
   // Computed fields
   category_name?: string;
   assigned_user_name?: string;
@@ -433,6 +438,11 @@ export interface CreateRecurringTaskTemplatePayload {
   due_time?: string;
   assigned_to_user_id?: number;
   create_task_today?: boolean;  // Whether to also create a task for today
+  // Evo Points settings
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_time?: string;  // Time string like "18:00:00"
+  evo_fixed_reduction_points?: number;
 }
 
 export interface UpdateRecurringTaskTemplatePayload {
@@ -447,6 +457,11 @@ export interface UpdateRecurringTaskTemplatePayload {
   due_time?: string;
   assigned_to_user_id?: number;
   is_active?: boolean;
+  // Evo Points settings
+  evo_points?: number;
+  evo_reduction_type?: EvoReductionType;
+  evo_extension_time?: string;
+  evo_fixed_reduction_points?: number;
 }
 
 // Attendance Types

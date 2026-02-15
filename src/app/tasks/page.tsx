@@ -96,16 +96,20 @@ import type {
   TaskCompletionResponse,
   EvoReductionType,
   EvoPointBalance,
+  RecurringTaskTemplate,
+  UpdateRecurringTaskTemplatePayload,
 } from '@/types';
 import { format, formatDistanceToNow, differenceInSeconds } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TaskViewSelector } from '@/components/ui/task-view-selector';
 import { getEffectiveView, taskViewKeys } from '@/lib/task-views-api';
+import { Switch } from '@/components/ui/switch';
 
 // ==================== Types ====================
 
-type GroupByOption = 'none' | 'category' | 'status';
+type GroupByOption = 'none' | 'category' | 'status' | 'recurrence';
+type ViewMode = 'my' | 'all' | 'scheduled';
 
 interface TasksResponse {
   items: Task[];
@@ -881,6 +885,13 @@ function AddTaskDialog({
         due_time: dueTime ? `${dueTime}:00` : undefined,
         assigned_to_user_id: assignedToUserId,
         create_task_today: recurrenceType !== 'once' && createTaskToday,
+        // Evo Points fields
+        evo_points: evoPoints,
+        evo_reduction_type: evoPoints ? evoReductionType : undefined,
+        evo_extension_time: evoReductionType !== 'NONE' && evoExtensionEnd 
+          ? `${evoExtensionEnd.split('T')[1] || evoExtensionEnd}:00`
+          : undefined,
+        evo_fixed_reduction_points: evoReductionType === 'FIXED' ? evoFixedReductionPoints : undefined,
       };
       await createTemplateMutation.mutateAsync(templateData);
     }
@@ -1215,6 +1226,356 @@ function AddTaskDialog({
   );
 }
 
+// ==================== Edit Recurring Template Dialog ====================
+
+function EditRecurringTemplateDialog({
+  open,
+  onOpenChange,
+  template,
+  categories,
+  staffList,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  template: RecurringTaskTemplate | null;
+  categories: TaskCategory[];
+  staffList?: StaffMember[];
+  onSave: (data: UpdateRecurringTaskTemplatePayload) => void;
+  isSaving: boolean;
+}) {
+  // Form state
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [assignedToUserId, setAssignedToUserId] = useState<number | undefined>(undefined);
+  
+  // Recurrence settings
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('daily');
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [dueTime, setDueTime] = useState('');
+  
+  // Evo Points
+  const [evoPoints, setEvoPoints] = useState<number | undefined>(undefined);
+  const [evoReductionType, setEvoReductionType] = useState<EvoReductionType>('NONE');
+  const [evoExtensionTime, setEvoExtensionTime] = useState('');
+  const [evoFixedReductionPoints, setEvoFixedReductionPoints] = useState<number | undefined>(undefined);
+  
+  // Active status
+  const [isActive, setIsActive] = useState(true);
+
+  // Populate form when template changes
+  useEffect(() => {
+    if (template && open) {
+      setTitle(template.title);
+      setDescription(template.description || '');
+      setCategoryId(template.category_id || undefined);
+      setAssignedToUserId(template.assigned_to_user_id || undefined);
+      setRecurrenceType(template.recurrence_type);
+      setSelectedDays(template.days_of_week?.split(',') || []);
+      setScheduledDate(template.scheduled_date || '');
+      setStartTime(template.start_time?.substring(0, 5) || '');
+      setDueTime(template.due_time?.substring(0, 5) || '');
+      setEvoPoints(template.evo_points || undefined);
+      setEvoReductionType(template.evo_reduction_type || 'NONE');
+      setEvoExtensionTime(template.evo_extension_time?.substring(0, 5) || '');
+      setEvoFixedReductionPoints(template.evo_fixed_reduction_points || undefined);
+      setIsActive(template.is_active);
+    }
+  }, [template, open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const updateData: UpdateRecurringTaskTemplatePayload = {
+      title,
+      description: description || undefined,
+      category_id: categoryId,
+      recurrence_type: recurrenceType,
+      days_of_week: recurrenceType === 'weekly' ? selectedDays.sort().join(',') : undefined,
+      scheduled_date: recurrenceType === 'once' ? scheduledDate : undefined,
+      start_time: startTime ? `${startTime}:00` : undefined,
+      due_time: dueTime ? `${dueTime}:00` : undefined,
+      assigned_to_user_id: assignedToUserId,
+      evo_points: evoPoints,
+      evo_reduction_type: evoPoints ? evoReductionType : undefined,
+      evo_extension_time: evoReductionType !== 'NONE' && evoExtensionTime 
+        ? `${evoExtensionTime}:00`
+        : undefined,
+      evo_fixed_reduction_points: evoReductionType === 'FIXED' ? evoFixedReductionPoints : undefined,
+      is_active: isActive,
+    };
+    
+    onSave(updateData);
+  };
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev => 
+      prev.includes(day) 
+        ? prev.filter(d => d !== day)
+        : [...prev, day]
+    );
+  };
+
+  if (!template) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Edit Scheduled Task</DialogTitle>
+            <DialogDescription>
+              Update the recurring task schedule and settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Title */}
+            <div className="grid gap-2">
+              <Label>Title</Label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Task title"
+                required
+              />
+            </div>
+
+            {/* Description */}
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add more details..."
+                rows={2}
+              />
+            </div>
+
+            {/* Category & Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Category</Label>
+                <Select
+                  value={categoryId?.toString() || '__none__'}
+                  onValueChange={(v) => setCategoryId(v === '__none__' ? undefined : parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No category</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id.toString()}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select
+                  value={isActive ? 'active' : 'inactive'}
+                  onValueChange={(v) => setIsActive(v === 'active')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Assignee */}
+            {staffList && staffList.length > 0 && (
+              <div className="grid gap-2">
+                <Label>Assign To</Label>
+                <Select
+                  value={assignedToUserId?.toString() || '__none__'}
+                  onValueChange={(v) => setAssignedToUserId(v === '__none__' ? undefined : parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Not assigned</SelectItem>
+                    {staffList.map((staff) => (
+                      <SelectItem key={staff.id} value={staff.id.toString()}>
+                        {staff.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Recurrence Settings */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+              <div className="grid gap-2">
+                <Label>Schedule Type</Label>
+                <Select value={recurrenceType} onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily (every day)</SelectItem>
+                    <SelectItem value="weekly">Weekly (specific days)</SelectItem>
+                    <SelectItem value="once">Scheduled (specific date)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {recurrenceType === 'weekly' && (
+                <div className="grid gap-2">
+                  <Label>Days of Week</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map((day) => (
+                      <Button
+                        key={day.value}
+                        type="button"
+                        variant={selectedDays.includes(day.value) ? 'default' : 'outline'}
+                        size="sm"
+                        className="w-12"
+                        onClick={() => toggleDay(day.value)}
+                      >
+                        {day.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recurrenceType === 'once' && (
+                <div className="grid gap-2">
+                  <Label>Scheduled Date</Label>
+                  <Input
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    required={recurrenceType === 'once'}
+                  />
+                </div>
+              )}
+
+              {/* Time settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Start Time (IST)</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Due Time (IST)</Label>
+                  <Input
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Evo Points Section */}
+            <details className="group border rounded-lg">
+              <summary className="flex items-center justify-between px-3 py-2 cursor-pointer select-none hover:bg-muted/50">
+                <span className="text-sm font-medium">Evo Points</span>
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-3 pb-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Points</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={evoPoints ?? ''}
+                      onChange={(e) => setEvoPoints(e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="0"
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Late Penalty</Label>
+                    <Select
+                      value={evoReductionType}
+                      onValueChange={(v) => setEvoReductionType(v as EvoReductionType)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">None</SelectItem>
+                        <SelectItem value="GRADUAL">Gradual</SelectItem>
+                        <SelectItem value="FIXED">Fixed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {evoReductionType === 'GRADUAL' && (
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Decay End Time</Label>
+                    <Input
+                      type="time"
+                      value={evoExtensionTime}
+                      onChange={(e) => setEvoExtensionTime(e.target.value)}
+                      className="h-8"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Points will gradually decrease from full value to 0 between due time and this end time.
+                    </p>
+                  </div>
+                )}
+
+                {evoReductionType === 'FIXED' && (
+                  <div className="grid gap-1">
+                    <Label className="text-xs text-muted-foreground">Deduction Amount</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={evoFixedReductionPoints ?? ''}
+                      onChange={(e) => setEvoFixedReductionPoints(e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="0"
+                      className="h-8"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This amount will be subtracted from the points if completed after due time.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </details>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={isSaving || !title.trim() || (recurrenceType === 'once' && !scheduledDate)}
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ==================== Task Row Component ====================
 
 function TaskRow({
@@ -1529,7 +1890,7 @@ export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<number | 'all'>('all');
-  const [viewMode, setViewMode] = useState<'my' | 'all'>('my');
+  const [viewMode, setViewMode] = useState<ViewMode>('my');
   const [selectedAssignee, setSelectedAssignee] = useState<StaffMember | null>(null);
   const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
@@ -1588,6 +1949,34 @@ export default function TasksPage() {
     queryKey: ['task-categories', project?.id],
     queryFn: () => api.get<TaskCategory[]>('/tasks/categories'),
     enabled: !!project?.id,
+  });
+
+  // Scheduled Tasks Filter State
+  const [scheduledStatusFilter, setScheduledStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [scheduledAssigneeFilter, setScheduledAssigneeFilter] = useState<number | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<RecurringTaskTemplate | null>(null);
+
+  // Recurring Templates Query
+  const { data: recurringTemplates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['recurring-templates', project?.id, isProjectAdmin, scheduledStatusFilter, scheduledAssigneeFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.append('include_inactive', 'true');
+      // Staff only sees their own templates
+      if (!isProjectAdmin) {
+        params.append('my_templates_only', 'true');
+      }
+      // Status filter
+      if (scheduledStatusFilter !== 'all') {
+        params.append('is_active', scheduledStatusFilter === 'active' ? 'true' : 'false');
+      }
+      // Assignee filter (admin only)
+      if (isProjectAdmin && scheduledAssigneeFilter) {
+        params.append('assigned_to_user_id', scheduledAssigneeFilter.toString());
+      }
+      return api.get<RecurringTaskTemplate[]>(`/tasks/recurring-templates?${params}`);
+    },
+    enabled: !!project?.id && viewMode === 'scheduled',
   });
 
   const { data: staffList } = useQuery({
@@ -1655,6 +2044,35 @@ export default function TasksPage() {
     onError: () => toast.error('Failed to delete task'),
   });
 
+  // Recurring Template Mutations
+  const toggleTemplateMutation = useMutation({
+    mutationFn: (id: number) => api.post<RecurringTaskTemplate>(`/tasks/recurring-templates/${id}/toggle`),
+    onSuccess: (data) => {
+      toast.success(`Schedule ${data.is_active ? 'enabled' : 'disabled'}`);
+      queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
+    },
+    onError: () => toast.error('Failed to toggle schedule'),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/tasks/recurring-templates/${id}`),
+    onSuccess: () => {
+      toast.success('Schedule deleted');
+      queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
+    },
+    onError: () => toast.error('Failed to delete schedule'),
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateRecurringTaskTemplatePayload }) =>
+      api.patch<RecurringTaskTemplate>(`/tasks/recurring-templates/${id}`, data),
+    onSuccess: () => {
+      toast.success('Schedule updated');
+      queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
+    },
+    onError: () => toast.error('Failed to update schedule'),
+  });
+
   // Filtered Tasks
   const tasks = useMemo(() => {
     const source = viewMode === 'my' ? (myTasks || []) : (allTasksData?.items || []);
@@ -1714,6 +2132,47 @@ export default function TasksPage() {
     return groups;
   }, [tasks, groupBy, categories]);
 
+  // Grouped Recurring Templates (for scheduled view)
+  const groupedTemplates = useMemo(() => {
+    if (viewMode !== 'scheduled' || groupBy === 'none') return null;
+    
+    const groups: Record<string, { label: string; bgColor?: string; templates: RecurringTaskTemplate[] }> = {};
+    
+    if (groupBy === 'category') {
+      recurringTemplates.forEach((template) => {
+        const key = template.category_id?.toString() || 'uncategorized';
+        if (!groups[key]) {
+          const category = categories.find(c => c.id === template.category_id);
+          groups[key] = {
+            label: template.category_name || 'Uncategorized',
+            bgColor: category?.color || '#6B7280',
+            templates: [],
+          };
+        }
+        groups[key].templates.push(template);
+      });
+    } else if (groupBy === 'recurrence') {
+      const recurrenceOrder = ['daily', 'weekly', 'once'];
+      const recurrenceLabels: Record<string, { label: string; bgColor: string }> = {
+        daily: { label: 'Daily', bgColor: '#3B82F6' },
+        weekly: { label: 'Weekly', bgColor: '#8B5CF6' },
+        once: { label: 'One-time', bgColor: '#F59E0B' },
+      };
+      recurrenceOrder.forEach((type) => {
+        const templates = recurringTemplates.filter(t => t.recurrence_type === type);
+        if (templates.length > 0) {
+          groups[type] = {
+            label: recurrenceLabels[type].label,
+            bgColor: recurrenceLabels[type].bgColor,
+            templates,
+          };
+        }
+      });
+    }
+    
+    return groups;
+  }, [recurringTemplates, groupBy, categories, viewMode]);
+
   const toggleGroup = (groupKey: string) => {
     setCollapsedGroups((prev) => {
       const newSet = new Set(prev);
@@ -1726,7 +2185,11 @@ export default function TasksPage() {
     });
   };
 
-  const isLoading = viewMode === 'my' ? loadingMyTasks : loadingAllTasks;
+  const isLoading = viewMode === 'scheduled' 
+    ? loadingTemplates 
+    : viewMode === 'my' 
+      ? loadingMyTasks 
+      : loadingAllTasks;
 
   return (
     <MainLayout>
@@ -1763,62 +2226,115 @@ export default function TasksPage() {
         {/* Filters & Search */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex items-center gap-2">
-            {/* View Toggle */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('my')}
-                className={cn(
-                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                  viewMode === 'my' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                )}
-              >
-                My Tasks
-              </button>
-              {isProjectAdmin && (
-                <button
-                  onClick={() => setViewMode('all')}
-                  className={cn(
-                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                    viewMode === 'all' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  )}
-                >
-                  All Tasks
-                </button>
-              )}
-            </div>
-
-            {/* Status Filter */}
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaskStatus | 'all')}>
-              <SelectTrigger className="w-[140px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">To Do</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="done">Done</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Category Filter */}
-            <Select
-              value={categoryFilter === 'all' ? 'all' : categoryFilter.toString()}
-              onValueChange={(v) => setCategoryFilter(v === 'all' ? 'all' : parseInt(v))}
-            >
+            {/* View Mode Dropdown */}
+            <Select value={viewMode} onValueChange={(v) => {
+              const newMode = v as ViewMode;
+              setViewMode(newMode);
+              // Reset groupBy when switching views to avoid invalid options
+              if (newMode === 'scheduled' && groupBy === 'status') {
+                setGroupBy('none');
+              } else if (newMode !== 'scheduled' && groupBy === 'recurrence') {
+                setGroupBy('none');
+              }
+            }}>
               <SelectTrigger className="w-[160px]">
-                <Tag className="h-4 w-4 mr-2" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id.toString()}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="my">My Tasks</SelectItem>
+                {isProjectAdmin && <SelectItem value="all">All Tasks</SelectItem>}
+                <SelectItem value="scheduled">Scheduled Tasks</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Status Filter - only for task views */}
+            {viewMode !== 'scheduled' && (
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaskStatus | 'all')}>
+                <SelectTrigger className="w-[140px]">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">To Do</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Scheduled Tasks Filters */}
+            {viewMode === 'scheduled' && (
+              <>
+                {/* Status Filter for Schedules */}
+                <Select value={scheduledStatusFilter} onValueChange={(v) => setScheduledStatusFilter(v as 'all' | 'active' | 'inactive')}>
+                  <SelectTrigger className="w-[140px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Assignee Filter for Schedules (Admin only) */}
+                {isProjectAdmin && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[180px] justify-start">
+                        <User className="h-4 w-4 mr-2" />
+                        {scheduledAssigneeFilter 
+                          ? staffList?.find(s => s.id === scheduledAssigneeFilter)?.name || 'Selected'
+                          : 'All Assignees'
+                        }
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[250px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search staff..." />
+                        <CommandList>
+                          <CommandEmpty>No staff found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem onSelect={() => setScheduledAssigneeFilter(null)}>
+                              <span>All Assignees</span>
+                            </CommandItem>
+                            {staffList?.map((staff) => (
+                              <CommandItem key={staff.id} onSelect={() => setScheduledAssigneeFilter(staff.id)}>
+                                <span>{staff.name}</span>
+                                {scheduledAssigneeFilter === staff.id && <Check className="ml-auto h-4 w-4" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </>
+            )}
+
+            {/* Category Filter - only for task views */}
+            {viewMode !== 'scheduled' && (
+              <Select
+                value={categoryFilter === 'all' ? 'all' : categoryFilter.toString()}
+                onValueChange={(v) => setCategoryFilter(v === 'all' ? 'all' : parseInt(v))}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <Tag className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             {/* Assignee Filter */}
             {isProjectAdmin && viewMode === 'all' && (
@@ -1906,14 +2422,258 @@ export default function TasksPage() {
               <SelectContent>
                 <SelectItem value="none">No Grouping</SelectItem>
                 <SelectItem value="category">By Category</SelectItem>
-                <SelectItem value="status">By Status</SelectItem>
+                {viewMode !== 'scheduled' && <SelectItem value="status">By Status</SelectItem>}
+                {viewMode === 'scheduled' && <SelectItem value="recurrence">By Recurrence</SelectItem>}
               </SelectContent>
             </Select>
           </div>
         </div>
 
         {/* Tables */}
-        {isLoading ? (
+        {viewMode === 'scheduled' ? (
+          // Scheduled Tasks View
+          isLoading ? (
+            <Card>
+              <div className="p-6 space-y-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            </Card>
+          ) : recurringTemplates.length === 0 ? (
+            <Card>
+              <div className="flex flex-col items-center gap-2 text-muted-foreground py-16">
+                <Repeat className="h-8 w-8" />
+                <span>No scheduled tasks found</span>
+                <Button variant="outline" size="sm" onClick={() => setShowAddTask(true)}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create a recurring task
+                </Button>
+              </div>
+            </Card>
+          ) : groupBy !== 'none' && groupedTemplates ? (
+            // Grouped view for scheduled tasks
+            <div className="space-y-4">
+              {Object.entries(groupedTemplates).map(([groupKey, group]) => (
+                <div key={groupKey}>
+                  {/* Group Header */}
+                  <div 
+                    className="flex items-center gap-2 py-2 px-3 rounded-t-lg border border-b-0 cursor-pointer transition-colors"
+                    style={{ backgroundColor: group.bgColor || '#6B7280' }}
+                    onClick={() => toggleGroup(groupKey)}
+                  >
+                    {collapsedGroups.has(groupKey) ? (
+                      <ChevronRight className="h-5 w-5 text-white" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-white" />
+                    )}
+                    <span className="font-semibold text-base text-white">
+                      {group.label}
+                    </span>
+                    <Badge variant="secondary" className="ml-2 bg-white/20 text-white hover:bg-white/30">
+                      {group.templates.length} {group.templates.length === 1 ? 'schedule' : 'schedules'}
+                    </Badge>
+                  </div>
+                  
+                  {/* Group Table */}
+                  {!collapsedGroups.has(groupKey) && (
+                    <Card className="rounded-t-none border-t-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[250px]">Title</TableHead>
+                            <TableHead className="w-[150px]">Recurrence</TableHead>
+                            <TableHead className="w-[150px]">Assigned To</TableHead>
+                            <TableHead className="w-[120px]">Category</TableHead>
+                            <TableHead className="w-[100px]">Status</TableHead>
+                            <TableHead className="w-[100px] text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {group.templates.map((template) => (
+                            <TableRow 
+                              key={template.id} 
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => setEditingTemplate(template)}
+                            >
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{template.title}</span>
+                                  {template.description && (
+                                    <span className="text-sm text-muted-foreground truncate max-w-[230px]">
+                                      {template.description}
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col gap-0.5">
+                                  <Badge variant="outline" className="w-fit capitalize">
+                                    {template.recurrence_type}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {template.recurrence_description || (
+                                      template.recurrence_type === 'once' 
+                                        ? template.scheduled_date 
+                                        : template.days_of_week?.split(',').map(d => ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][parseInt(d)]).join(', ')
+                                    )}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{template.assigned_user_name || '-'}</span>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{template.category_name || '-'}</span>
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={template.is_active}
+                                    onCheckedChange={() => toggleTemplateMutation.mutate(template.id)}
+                                  />
+                                  <span className={cn(
+                                    "text-xs",
+                                    template.is_active ? "text-green-600" : "text-muted-foreground"
+                                  )}>
+                                    {template.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => setEditingTemplate(template)}>
+                                      <Edit3 className="h-4 w-4 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => {
+                                        if (confirm('Are you sure you want to delete this scheduled task?')) {
+                                          deleteTemplateMutation.mutate(template.id);
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Card>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[250px]">Title</TableHead>
+                    <TableHead className="w-[150px]">Recurrence</TableHead>
+                    <TableHead className="w-[150px]">Assigned To</TableHead>
+                    <TableHead className="w-[120px]">Category</TableHead>
+                    <TableHead className="w-[100px]">Status</TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recurringTemplates.map((template) => (
+                    <TableRow 
+                      key={template.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setEditingTemplate(template)}
+                    >
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{template.title}</span>
+                          {template.description && (
+                            <span className="text-sm text-muted-foreground truncate max-w-[230px]">
+                              {template.description}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className="w-fit capitalize">
+                            {template.recurrence_type}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {template.recurrence_description || (
+                              template.recurrence_type === 'once' 
+                                ? template.scheduled_date 
+                                : template.days_of_week?.split(',').map(d => ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][parseInt(d)]).join(', ')
+                            )}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{template.assigned_user_name || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{template.category_name || '-'}</span>
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={template.is_active}
+                            onCheckedChange={() => toggleTemplateMutation.mutate(template.id)}
+                          />
+                          <span className={cn(
+                            "text-xs",
+                            template.is_active ? "text-green-600" : "text-muted-foreground"
+                          )}>
+                            {template.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditingTemplate(template)}>
+                              <Edit3 className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this scheduled task?')) {
+                                  deleteTemplateMutation.mutate(template.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )
+        ) : isLoading ? (
           <Card>
             <div className="p-6 space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -2033,6 +2793,21 @@ export default function TasksPage() {
         open={showCategoryManager}
         onOpenChange={setShowCategoryManager}
         categories={categories}
+      />
+      <EditRecurringTemplateDialog
+        open={!!editingTemplate}
+        onOpenChange={(open) => !open && setEditingTemplate(null)}
+        template={editingTemplate}
+        categories={categories}
+        staffList={isProjectAdmin ? staffList : undefined}
+        onSave={(data) => {
+          if (editingTemplate) {
+            updateTemplateMutation.mutate({ id: editingTemplate.id, data }, {
+              onSuccess: () => setEditingTemplate(null),
+            });
+          }
+        }}
+        isSaving={updateTemplateMutation.isPending}
       />
     </MainLayout>
   );
