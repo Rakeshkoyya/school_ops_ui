@@ -72,10 +72,17 @@ function RoleDialog({
   }, [role]);
 
   const mutation = useMutation({
-    mutationFn: (data: { name: string; description: string; permissions: string[] }) =>
-      role
-        ? api.patch(`/roles/${role.id}`, data)
-        : api.post('/roles', data),
+    mutationFn: (data: { name: string; description: string; permissions: string[] }) => {
+      // Clean data: convert empty strings to undefined for optional fields
+      const cleanedData = {
+        ...data,
+        name: data.name.trim() || undefined,
+        description: data.description.trim() || undefined,
+      };
+      return role
+        ? api.patch(`/roles/${role.id}`, cleanedData)
+        : api.post('/roles', cleanedData);
+    },
     onSuccess: () => {
       toast.success(role ? 'Role updated successfully' : 'Role created successfully');
       queryClient.invalidateQueries({ queryKey: ['roles'] });

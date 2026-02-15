@@ -97,6 +97,7 @@ export function PermissionsByMenu({
       upload: 'Uploads',
       notification: 'Notifications',
       audit: 'Audit Logs',
+      fee: 'Fees',
     };
     const actionLabel = actionLabels[action] || action;
     return actionLabel;

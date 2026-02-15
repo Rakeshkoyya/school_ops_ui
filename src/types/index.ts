@@ -746,7 +746,95 @@ export interface ApiError {
   status_code: number;
 }
 
-// Dashboard Widget Types
+// Dashboard Widget Types (Dynamic based on menu allocation)
+export interface TaskStatusCount {
+  pending: number;
+  in_progress: number;
+  done: number;
+  overdue: number;
+  cancelled: number;
+}
+
+export interface TaskDashboardStats {
+  total_tasks: number;
+  status_counts: TaskStatusCount;
+  completed_today: number;
+  due_today: number;
+  completion_rate: number;
+}
+
+export interface AttendanceDashboardStats {
+  date: string;
+  total_students: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  present_rate: number;
+  attendance_captured: boolean;
+}
+
+export interface AttendanceByClassStat {
+  class_section: string;
+  total_students: number;
+  present_count: number;
+  present_rate: number;
+}
+
+export interface ExamDashboardStats {
+  recent_exam_name: string | null;
+  recent_exam_subject: string | null;
+  recent_exam_date: string | null;
+  total_students: number;
+  average_marks: number | null;
+  pass_rate: number;
+  highest_marks: number | null;
+  lowest_marks: number | null;
+}
+
+export interface ClassStudentCount {
+  class_section: string;
+  student_count: number;
+}
+
+export interface StudentDashboardStats {
+  total_students: number;
+  class_count: number;
+  by_class: ClassStudentCount[];
+}
+
+export interface EvoLeaderboardEntry {
+  rank: number;
+  user_id: number;
+  user_name: string;
+  points: number;
+}
+
+export interface EvoDashboardStats {
+  current_user_balance: number;
+  current_user_rank: number | null;
+  leaderboard: EvoLeaderboardEntry[];
+}
+
+export interface DashboardWidgetConfig {
+  show_tasks: boolean;
+  show_attendance: boolean;
+  show_exams: boolean;
+  show_students: boolean;
+  show_evo_points: boolean;
+}
+
+export interface DashboardResponse {
+  widget_config: DashboardWidgetConfig;
+  tasks: TaskDashboardStats | null;
+  attendance: AttendanceDashboardStats | null;
+  attendance_by_class: AttendanceByClassStat[] | null;
+  exams: ExamDashboardStats | null;
+  students: StudentDashboardStats | null;
+  evo_points: EvoDashboardStats | null;
+}
+
+// Legacy DashboardStats (for backward compatibility)
 export interface DashboardStats {
   pending_tasks: number;
   completed_tasks: number;
