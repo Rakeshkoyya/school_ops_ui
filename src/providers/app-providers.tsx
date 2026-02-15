@@ -2,7 +2,7 @@
 
 import { ReactNode } from 'react';
 import { QueryProvider } from './query-provider';
-import { AuthProvider, ProjectProvider } from '@/contexts';
+import { AuthProvider, ProjectProvider, MenuProvider } from '@/contexts';
 import { AuthGuard } from '@/components/guards';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -15,10 +15,12 @@ export function AppProviders({ children }: AppProvidersProps) {
     <QueryProvider>
       <AuthProvider>
         <ProjectProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-          <Toaster position="top-right" richColors closeButton />
+          <MenuProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+            <Toaster position="top-right" richColors closeButton />
+          </MenuProvider>
         </ProjectProvider>
       </AuthProvider>
     </QueryProvider>

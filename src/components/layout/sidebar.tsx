@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
 import { useProject } from '@/contexts/project-context';
+import { useMenu } from '@/contexts/menu-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { normalizeRoleName } from '@/types';
@@ -20,6 +21,7 @@ import {
   School,
   FolderKanban,
   DollarSign,
+  LayoutList,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,7 +37,7 @@ interface NavItem {
 }
 
 // Navigation items for Super Admin role
-// Dashboard, Project Management, Roles Management, Users Management
+// Dashboard, Project Management, Menu Screens, Roles Management, Users Management
 const superAdminNavItems: NavItem[] = [
   {
     label: 'Dashboard',
@@ -46,6 +48,11 @@ const superAdminNavItems: NavItem[] = [
     label: 'Projects',
     href: '/admin/projects',
     icon: <FolderKanban className="h-5 w-5" />,
+  },
+  {
+    label: 'Menu Screens',
+    href: '/admin/menu-screens',
+    icon: <LayoutList className="h-5 w-5" />,
   },
   {
     label: 'Roles',
@@ -107,16 +114,35 @@ const schoolAdminNavItems: NavItem[] = [
     label: 'Fee Management',
     href: '/fees',
     icon: <DollarSign className="h-5 w-5" />,
+    permission: 'fee:view',
   },
 ];
 
 // Navigation items for Staff/Teacher role
-// Dashboard, Task Management, Attendance, Exams
+// Dashboard, Users, Students, Roles, Task Management, Attendance, Exams
 const staffNavItems: NavItem[] = [
   {
     label: 'Dashboard',
     href: '/dashboard',
     icon: <LayoutDashboard className="h-5 w-5" />,
+  },
+  {
+    label: 'Users',
+    href: '/users',
+    icon: <Users className="h-5 w-5" />,
+    permission: 'user:view',
+  },
+  {
+    label: 'Students',
+    href: '/students',
+    icon: <GraduationCap className="h-5 w-5" />,
+    permission: 'student:view',
+  },
+  {
+    label: 'Roles',
+    href: '/roles',
+    icon: <Shield className="h-5 w-5" />,
+    permission: 'role:view',
   },
   {
     label: 'Tasks',
@@ -136,12 +162,19 @@ const staffNavItems: NavItem[] = [
     icon: <GraduationCap className="h-5 w-5" />,
     permission: 'exam:view',
   },
+  {
+    label: 'Fee Management',
+    href: '/fees',
+    icon: <DollarSign className="h-5 w-5" />,
+    permission: 'fee:view',
+  },
 ];
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { hasPermission, user, permissions } = useAuth();
   const { project } = useProject();
+  const { isMenuAllocated } = useMenu();
 
   // Debug logging - remove after debugging
   console.log('[Sidebar Debug]', {
@@ -150,6 +183,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     permissions: permissions,
     hasAttendanceView: hasPermission('attendance:view'),
   });
+
+  // Filter function to check both permission and menu allocation
+  const isItemVisible = (item: NavItem): boolean => {
+    // Check permission first
+    if (item.permission && !hasPermission(item.permission)) {
+      return false;
+    }
+    // Check if the menu is allocated to the project
+    if (!isMenuAllocated(item.label)) {
+      return false;
+    }
+    return true;
+  };
 
   // Determine which nav items to show based on current role
   const getVisibleNavItems = (): NavItem[] => {
@@ -171,21 +217,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       case 'Super Admin':
         return superAdminNavItems;
       case 'School Admin':
-        return schoolAdminNavItems.filter((item) => {
-          if (!item.permission) return true;
-          return hasPermission(item.permission);
-        });
+        return schoolAdminNavItems.filter(isItemVisible);
       case 'Staff':
-        return staffNavItems.filter((item) => {
-          if (!item.permission) return true;
-          return hasPermission(item.permission);
-        });
+        return staffNavItems.filter(isItemVisible);
       default:
         // For any other custom roles, show staff-level navigation
-        return staffNavItems.filter((item) => {
-          if (!item.permission) return true;
-          return hasPermission(item.permission);
-        });
+        return staffNavItems.filter(isItemVisible);
     }
   };
 

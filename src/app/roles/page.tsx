@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout';
 import { api } from '@/lib/api-client';
@@ -46,86 +46,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { Role, PaginatedResponse, Permission } from '@/types';
+import { PermissionsByMenu } from '@/components/roles';
+import type { Role } from '@/types';
 import { toast } from 'sonner';
-
-// All available permissions
-const allPermissions: { category: string; permissions: { key: Permission; label: string }[] }[] = [
-  {
-    category: 'Tasks',
-    permissions: [
-      { key: 'task:view', label: 'View Tasks' },
-      { key: 'task:create', label: 'Create Tasks' },
-      { key: 'task:assign', label: 'Assign Tasks' },
-      { key: 'task:update', label: 'Update Tasks' },
-      { key: 'task:delete', label: 'Delete Tasks' },
-    ],
-  },
-  {
-    category: 'Task Categories',
-    permissions: [
-      { key: 'task_category:view', label: 'View Categories' },
-      { key: 'task_category:create', label: 'Create Categories' },
-      { key: 'task_category:update', label: 'Update Categories' },
-      { key: 'task_category:delete', label: 'Delete Categories' },
-    ],
-  },
-  {
-    category: 'Attendance',
-    permissions: [
-      { key: 'attendance:view', label: 'View Attendance' },
-      { key: 'attendance:create', label: 'Create Attendance' },
-      { key: 'attendance:update', label: 'Update Attendance' },
-      { key: 'attendance:delete', label: 'Delete Attendance' },
-      { key: 'attendance:upload', label: 'Upload Attendance' },
-    ],
-  },
-  {
-    category: 'Exams',
-    permissions: [
-      { key: 'exam:view', label: 'View Exams' },
-      { key: 'exam:create', label: 'Create Exams' },
-      { key: 'exam:update', label: 'Update Exams' },
-      { key: 'exam:delete', label: 'Delete Exams' },
-      { key: 'exam:upload', label: 'Upload Exams' },
-    ],
-  },
-  {
-    category: 'Uploads',
-    permissions: [
-      { key: 'upload:view', label: 'View Uploads' },
-      { key: 'upload:create', label: 'Create Uploads' },
-    ],
-  },
-  {
-    category: 'Roles',
-    permissions: [
-      { key: 'role:view', label: 'View Roles' },
-      { key: 'role:create', label: 'Create Roles' },
-      { key: 'role:update', label: 'Update Roles' },
-      { key: 'role:delete', label: 'Delete Roles' },
-      { key: 'role:assign', label: 'Assign Roles' },
-    ],
-  },
-  {
-    category: 'Users',
-    permissions: [
-      { key: 'user:view', label: 'View Users' },
-      { key: 'user:invite', label: 'Invite Users' },
-      { key: 'user:remove', label: 'Remove Users' },
-    ],
-  },
-  {
-    category: 'Administration',
-    permissions: [
-      { key: 'audit:view', label: 'View Audit Logs' },
-      { key: 'project:view', label: 'View Project' },
-      { key: 'project:update', label: 'Update Project Settings' },
-      { key: 'notification:view', label: 'View Notifications' },
-      { key: 'notification:create', label: 'Create Notifications' },
-    ],
-  },
-];
 
 // Create/Edit Role Dialog
 function RoleDialog({
@@ -140,6 +63,13 @@ function RoleDialog({
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>(role?.permissions || []);
   const { project } = useProject();
   const queryClient = useQueryClient();
+
+  // Update form when role changes (for edit mode)
+  useEffect(() => {
+    setName(role?.name || '');
+    setDescription(role?.description || '');
+    setSelectedPermissions(role?.permissions || []);
+  }, [role]);
 
   const mutation = useMutation({
     mutationFn: (data: { name: string; description: string; permissions: string[] }) =>
@@ -161,27 +91,27 @@ function RoleDialog({
     mutation.mutate({ name, description, permissions: selectedPermissions });
   };
 
-  const togglePermission = (permission: string) => {
+  const handlePermissionToggle = useCallback((permission: string) => {
     setSelectedPermissions((prev) =>
       prev.includes(permission)
         ? prev.filter((p) => p !== permission)
         : [...prev, permission]
     );
-  };
+  }, []);
 
-  const toggleCategory = (category: { permissions: { key: string }[] }) => {
-    const categoryPermissions = category.permissions.map((p) => p.key);
-    const allSelected = categoryPermissions.every((p) => selectedPermissions.includes(p));
-    
-    if (allSelected) {
-      setSelectedPermissions((prev) => prev.filter((p) => !categoryPermissions.includes(p)));
-    } else {
-      setSelectedPermissions((prev) => [...new Set([...prev, ...categoryPermissions])]);
-    }
-  };
+  const handleCategoryToggle = useCallback((categoryPermissions: string[]) => {
+    setSelectedPermissions((prev) => {
+      const allSelected = categoryPermissions.every((p) => prev.includes(p));
+      if (allSelected) {
+        return prev.filter((p) => !categoryPermissions.includes(p));
+      } else {
+        return [...new Set([...prev, ...categoryPermissions])];
+      }
+    });
+  }, []);
 
   return (
-    <DialogContent className="sm:max-w-[600px]">
+    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
       <form onSubmit={handleSubmit}>
         <DialogHeader>
           <DialogTitle>{role ? 'Edit Role' : 'Create New Role'}</DialogTitle>
@@ -211,54 +141,14 @@ function RoleDialog({
             />
           </div>
           <div className="grid gap-2">
-            <Label>Permissions</Label>
-            <ScrollArea className="h-[300px] rounded-md border p-4">
-              <div className="space-y-6">
-                {allPermissions.map((category) => {
-                  const categoryPermissions = category.permissions.map((p) => p.key);
-                  const allSelected = categoryPermissions.every((p) =>
-                    selectedPermissions.includes(p)
-                  );
-                  const someSelected =
-                    categoryPermissions.some((p) => selectedPermissions.includes(p)) &&
-                    !allSelected;
-
-                  return (
-                    <div key={category.category} className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id={category.category}
-                          checked={allSelected}
-                          ref={(el) => {
-                            if (el) {
-                              (el as HTMLButtonElement & { indeterminate: boolean }).indeterminate = someSelected;
-                            }
-                          }}
-                          onCheckedChange={() => toggleCategory(category)}
-                        />
-                        <Label htmlFor={category.category} className="font-semibold cursor-pointer">
-                          {category.category}
-                        </Label>
-                      </div>
-                      <div className="ml-6 grid gap-2">
-                        {category.permissions.map((permission) => (
-                          <div key={permission.key} className="flex items-center gap-2">
-                            <Checkbox
-                              id={permission.key}
-                              checked={selectedPermissions.includes(permission.key)}
-                              onCheckedChange={() => togglePermission(permission.key)}
-                            />
-                            <Label htmlFor={permission.key} className="font-normal cursor-pointer">
-                              {permission.label}
-                            </Label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+            <Label>Permissions (grouped by menu)</Label>
+            <div className="rounded-md border p-2">
+              <PermissionsByMenu
+                selectedPermissions={selectedPermissions}
+                onPermissionToggle={handlePermissionToggle}
+                onCategoryToggle={handleCategoryToggle}
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
@@ -281,9 +171,9 @@ export default function RolesPage() {
   const { project } = useProject();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data: roles = [], isLoading } = useQuery({
     queryKey: ['roles', project?.id],
-    queryFn: () => api.get<PaginatedResponse<Role>>('/roles'),
+    queryFn: () => api.get<Role[]>('/roles'),
     enabled: !!project?.id,
   });
 
@@ -298,58 +188,10 @@ export default function RolesPage() {
     },
   });
 
-  // Mock data for development
-  const mockRoles: Role[] = [
-    {
-      id: 1,
-      name: 'Administrator',
-      description: 'Full access to all features and settings',
-      permissions: [
-        'task:view', 'task:create', 'task:assign', 'task:update', 'task:delete',
-        'attendance:view', 'attendance:upload',
-        'exam:view', 'exam:upload',
-        'upload:view',
-        'role:view', 'user:view', 'audit:view', 'project:update',
-      ],
-      project_id: 1,
-      created_at: '2026-01-01',
-      updated_at: '2026-01-01',
-    },
-    {
-      id: 2,
-      name: 'Teacher',
-      description: 'Can manage attendance and view tasks',
-      permissions: ['task:view', 'task:create', 'attendance:view', 'attendance:upload'],
-      project_id: 1,
-      created_at: '2026-01-01',
-      updated_at: '2026-01-01',
-    },
-    {
-      id: 3,
-      name: 'Exam Coordinator',
-      description: 'Can manage exam results and view uploads',
-      permissions: ['task:view', 'exam:view', 'exam:upload', 'upload:view'],
-      project_id: 1,
-      created_at: '2026-01-01',
-      updated_at: '2026-01-01',
-    },
-    {
-      id: 4,
-      name: 'Office Staff',
-      description: 'Basic access to tasks and uploads',
-      permissions: ['task:view', 'upload:view'],
-      project_id: 1,
-      created_at: '2026-01-01',
-      updated_at: '2026-01-01',
-    },
-  ];
-
-  const roles = data?.items || mockRoles;
-
   const filteredRoles = roles.filter(
     (role) =>
       role.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      role.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (role.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
 
   const handleEdit = (role: Role) => {
@@ -407,6 +249,22 @@ export default function RolesPage() {
               <Skeleton key={i} className="h-[200px]" />
             ))}
           </div>
+        ) : filteredRoles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold">No Roles Found</h3>
+            <p className="text-muted-foreground mt-1 mb-4">
+              {searchQuery
+                ? 'No roles match your search criteria.'
+                : 'Get started by creating your first role.'}
+            </p>
+            {!searchQuery && (
+              <Button onClick={handleCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Role
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredRoles.map((role) => (
@@ -451,7 +309,7 @@ export default function RolesPage() {
                   <div className="flex flex-wrap gap-1">
                     {role.permissions.slice(0, 4).map((permission) => (
                       <Badge key={permission} variant="secondary" className="text-xs">
-                        {permission.split('.')[1]}
+                        {permission}
                       </Badge>
                     ))}
                     {role.permissions.length > 4 && (

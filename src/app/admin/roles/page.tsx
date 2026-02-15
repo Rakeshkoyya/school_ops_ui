@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout';
 import { api } from '@/lib/api-client';
@@ -27,9 +27,7 @@ import {
 } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Plus,
   Search,
@@ -62,6 +60,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { PermissionsByMenu } from '@/components/roles';
 import type { Role, Project, Permission } from '@/types';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
@@ -78,67 +77,6 @@ const formatDate = (dateString: string | undefined | null): string => {
   }
 };
 
-// All available permissions
-const allPermissions: { category: string; permissions: { key: Permission; label: string }[] }[] = [
-  {
-    category: 'Tasks',
-    permissions: [
-      { key: 'task:view', label: 'View Tasks' },
-      { key: 'task:create', label: 'Create Tasks' },
-      { key: 'task:assign', label: 'Assign Tasks' },
-      { key: 'task:update', label: 'Update Tasks' },
-      { key: 'task:delete', label: 'Delete Tasks' },
-    ],
-  },
-  {
-    category: 'Attendance',
-    permissions: [
-      { key: 'attendance:view', label: 'View Attendance' },
-      { key: 'attendance:create', label: 'Create Attendance' },
-      { key: 'attendance:update', label: 'Update Attendance' },
-      { key: 'attendance:delete', label: 'Delete Attendance' },
-      { key: 'attendance:upload', label: 'Upload Attendance' },
-    ],
-  },
-  {
-    category: 'Exams',
-    permissions: [
-      { key: 'exam:view', label: 'View Exams' },
-      { key: 'exam:create', label: 'Create Exams' },
-      { key: 'exam:update', label: 'Update Exams' },
-      { key: 'exam:delete', label: 'Delete Exams' },
-      { key: 'exam:upload', label: 'Upload Exams' },
-    ],
-  },
-  {
-    category: 'Roles & Users',
-    permissions: [
-      { key: 'role:view', label: 'View Roles' },
-      { key: 'role:create', label: 'Create Roles' },
-      { key: 'role:update', label: 'Update Roles' },
-      { key: 'role:delete', label: 'Delete Roles' },
-      { key: 'role:assign', label: 'Assign Roles' },
-      { key: 'user:view', label: 'View Users' },
-      { key: 'user:invite', label: 'Invite Users' },
-      { key: 'user:remove', label: 'Remove Users' },
-    ],
-  },
-  {
-    category: 'Administration',
-    permissions: [
-      { key: 'upload:view', label: 'View Uploads' },
-      { key: 'upload:create', label: 'Create Uploads' },
-      { key: 'audit:view', label: 'View Audit Logs' },
-      { key: 'project:view', label: 'View Project' },
-      { key: 'project:update', label: 'Update Project' },
-      { key: 'project:create', label: 'Create Project' },
-      { key: 'project:delete', label: 'Delete Project' },
-      { key: 'notification:view', label: 'View Notifications' },
-      { key: 'notification:create', label: 'Create Notifications' },
-    ],
-  },
-];
-
 interface RoleFormData {
   name: string;
   description: string;
@@ -148,19 +86,12 @@ interface RoleFormData {
   is_role_admin: boolean;
 }
 
-// API response type for permissions (as objects from backend)
-interface PermissionObject {
-  id: number;
-  permission_key: string;
-  description: string | null;
-}
-
-// API response type for roles with permissions as objects
+// API response type for roles with permissions as string keys
 interface RoleApiResponse {
   id: number;
   name: string;
   description: string;
-  permissions: PermissionObject[];
+  permissions: string[];  // Permission keys like 'task:view'
   project_id: number;
   project_name?: string;
   is_project_admin: boolean;
@@ -174,15 +105,12 @@ const mapApiRoleToRole = (apiRole: RoleApiResponse): Role => ({
   id: apiRole.id,
   name: apiRole.name,
   description: apiRole.description,
-  permissions: apiRole.permissions.map((p) => p.permission_key),
+  permissions: apiRole.permissions,  // Already string keys from backend
   project_id: apiRole.project_id,
   project_name: apiRole.project_name,
   created_at: apiRole.created_at,
   updated_at: apiRole.updated_at,
 });
-
-// Get all permission keys flat array
-const allPermissionKeys = allPermissions.flatMap((cat) => cat.permissions.map((p) => p.key));
 
 // Create/Edit Role Dialog
 function RoleDialog({
@@ -220,20 +148,26 @@ function RoleDialog({
     }
   }, [open, role]);
 
-  // Check if all permissions are selected
-  const allPermissionsSelected = allPermissionKeys.every((p) =>
-    formData.permissions.includes(p)
-  );
-  const somePermissionsSelected =
-    formData.permissions.length > 0 && !allPermissionsSelected;
+  // Permission toggle handlers for PermissionsByMenu component
+  const handlePermissionToggle = useCallback((permission: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      permissions: prev.permissions.includes(permission)
+        ? prev.permissions.filter((p) => p !== permission)
+        : [...prev.permissions, permission],
+    }));
+  }, []);
 
-  const toggleAllPermissions = () => {
-    if (allPermissionsSelected) {
-      setFormData((prev) => ({ ...prev, permissions: [] }));
-    } else {
-      setFormData((prev) => ({ ...prev, permissions: [...allPermissionKeys] }));
-    }
-  };
+  const handleCategoryToggle = useCallback((categoryPermissions: string[]) => {
+    setFormData((prev) => {
+      const allSelected = categoryPermissions.every((p) => prev.permissions.includes(p));
+      if (allSelected) {
+        return { ...prev, permissions: prev.permissions.filter((p) => !categoryPermissions.includes(p)) };
+      } else {
+        return { ...prev, permissions: [...new Set([...prev.permissions, ...categoryPermissions])] };
+      }
+    });
+  }, []);
 
   const mutation = useMutation({
     mutationFn: (data: RoleFormData) =>
@@ -253,34 +187,6 @@ function RoleDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     mutation.mutate(formData);
-  };
-
-  const togglePermission = (permission: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      permissions: prev.permissions.includes(permission)
-        ? prev.permissions.filter((p) => p !== permission)
-        : [...prev.permissions, permission],
-    }));
-  };
-
-  const toggleCategory = (category: { permissions: { key: string }[] }) => {
-    const categoryPermissions = category.permissions.map((p) => p.key);
-    const allSelected = categoryPermissions.every((p) =>
-      formData.permissions.includes(p)
-    );
-
-    if (allSelected) {
-      setFormData((prev) => ({
-        ...prev,
-        permissions: prev.permissions.filter((p) => !categoryPermissions.includes(p)),
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        permissions: [...new Set([...prev.permissions, ...categoryPermissions])],
-      }));
-    }
   };
 
   return (
@@ -338,81 +244,16 @@ function RoleDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label>Permissions</Label>
-              <ScrollArea className="h-62.5 rounded-md border p-4">
-                <div className="space-y-6">
-                  {/* Select All Permissions */}
-                  <div className="flex items-center gap-2 pb-3 border-b">
-                    <Checkbox
-                      id="select-all-permissions"
-                      checked={allPermissionsSelected}
-                      ref={(el) => {
-                        if (el) {
-                          (el as HTMLButtonElement & { indeterminate: boolean }).indeterminate =
-                            somePermissionsSelected;
-                        }
-                      }}
-                      onCheckedChange={toggleAllPermissions}
-                    />
-                    <Label
-                      htmlFor="select-all-permissions"
-                      className="font-semibold cursor-pointer text-primary"
-                    >
-                      Select All Permissions
-                    </Label>
-                  </div>
-                  {allPermissions.map((category) => {
-                    const categoryPermissions = category.permissions.map((p) => p.key);
-                    const allSelected = categoryPermissions.every((p) =>
-                      formData.permissions.includes(p)
-                    );
-                    const someSelected =
-                      categoryPermissions.some((p) => formData.permissions.includes(p)) &&
-                      !allSelected;
-
-                    return (
-                      <div key={category.category} className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={category.category}
-                            checked={allSelected}
-                            ref={(el) => {
-                              if (el) {
-                                (el as HTMLButtonElement & { indeterminate: boolean }).indeterminate =
-                                  someSelected;
-                              }
-                            }}
-                            onCheckedChange={() => toggleCategory(category)}
-                          />
-                          <Label
-                            htmlFor={category.category}
-                            className="font-semibold cursor-pointer"
-                          >
-                            {category.category}
-                          </Label>
-                        </div>
-                        <div className="ml-6 grid gap-2">
-                          {category.permissions.map((permission) => (
-                            <div key={permission.key} className="flex items-center gap-2">
-                              <Checkbox
-                                id={permission.key}
-                                checked={formData.permissions.includes(permission.key)}
-                                onCheckedChange={() => togglePermission(permission.key)}
-                              />
-                              <Label
-                                htmlFor={permission.key}
-                                className="font-normal cursor-pointer"
-                              >
-                                {permission.label}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+              <Label>Permissions (grouped by menu)</Label>
+              <div className="rounded-md border p-2 max-h-[300px] overflow-y-auto">
+                <PermissionsByMenu
+                  projectId={formData.project_id || undefined}
+                  selectedPermissions={formData.permissions}
+                  onPermissionToggle={handlePermissionToggle}
+                  onCategoryToggle={handleCategoryToggle}
+                  isSuperAdmin={true}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="pt-4 border-t mt-auto flex-shrink-0">

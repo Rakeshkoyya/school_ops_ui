@@ -582,13 +582,10 @@ function AssignRolesDialog({
 
   const mutation = useMutation({
     mutationFn: async (roleIds: number[]) => {
-      // For simplicity, assign first role selected
-      if (roleIds.length > 0) {
-        return api.post('/roles/users', {
-          user_id: user.id,
-          role_id: roleIds[0],
-        });
-      }
+      // Use PUT to replace all roles for the user
+      return api.put(`/roles/users/${user.id}/roles`, {
+        role_ids: roleIds,
+      });
     },
     onSuccess: () => {
       toast.success('Roles updated successfully');

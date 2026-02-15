@@ -162,10 +162,12 @@ export type Permission =
 export interface Role {
   id: number;
   name: string;
-  description: string;
+  description?: string;
   permissions: string[];
   project_id: number;
   project_name?: string;
+  is_project_admin?: boolean;
+  is_role_admin?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -780,4 +782,44 @@ export interface ProjectSettings {
     email_enabled: boolean;
     push_enabled: boolean;
   };
+}
+
+// Menu Screen Types
+export interface PermissionDetail {
+  id: number;
+  permission_key: string;
+  name: string;
+  description?: string;
+}
+
+export interface MenuScreen {
+  id: number;
+  name: string;
+  route: string;
+  display_order: number;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MenuScreenWithPermissions extends MenuScreen {
+  permissions: PermissionDetail[];
+}
+
+export interface ProjectMenuAllocation {
+  project_id: number;
+  project_name?: string;
+  allocated_menus: MenuScreenWithPermissions[];
+}
+
+export interface MenuPermissionGroup {
+  menu_id: number;
+  menu_name: string;
+  is_allocated: boolean;
+  permissions: PermissionDetail[];
+}
+
+export interface AvailablePermissionsResponse {
+  project_id: number;
+  menu_groups: MenuPermissionGroup[];
 }
