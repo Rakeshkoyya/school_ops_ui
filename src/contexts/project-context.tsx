@@ -36,18 +36,22 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   // Sync project from localStorage on mount (for hydration)
   useEffect(() => {
-    const projectId = getCurrentProjectId();
-    if (projectId && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       const storedProject = localStorage.getItem('current_project');
       if (storedProject && !project) {
         try {
           const parsed = JSON.parse(storedProject);
           setProjectState(parsed);
+          // Ensure api-client's currentProjectId is synced
+          setCurrentProjectId(parsed.id);
         } catch {
           // Invalid stored project, clear it
           clearCurrentProjectId();
           localStorage.removeItem('current_project');
         }
+      } else if (project) {
+        // Ensure api-client is synced with current project state
+        setCurrentProjectId(project.id);
       }
     }
   }, [project]);
@@ -83,6 +87,8 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       const customEvent = e as CustomEvent<ProjectWithRole>;
       if (customEvent.detail) {
         setProjectState(customEvent.detail);
+        setCurrentProjectId(customEvent.detail.id);
+        localStorage.setItem('current_project', JSON.stringify(customEvent.detail));
       }
     };
 
