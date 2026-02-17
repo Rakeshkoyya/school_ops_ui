@@ -24,7 +24,7 @@ COPY . .
 # Build arguments for environment variables (set at build time)
 ARG NEXT_PUBLIC_API_URL=/api/v1
 ARG NEXT_PUBLIC_APP_NAME="School Operations"
-ARG BACKEND_URL=http://localhost:8000
+ARG BACKEND_URL=http://backend:8000
 
 # Set environment variables for build
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
