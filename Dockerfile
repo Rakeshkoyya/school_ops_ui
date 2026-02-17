@@ -66,5 +66,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl --fail http://localhost:3000 || exit 1
 
-# Start the server
-CMD ["node", "server.js"]
+# Start the server with explicit HOSTNAME binding
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
