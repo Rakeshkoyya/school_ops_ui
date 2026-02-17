@@ -1,0 +1,25 @@
+services:
+  # ==========================================================================
+  # Frontend Next.js Server
+  # ==========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=/api/v1
+        - NEXT_PUBLIC_APP_NAME=School Operations
+        - BACKEND_URL=${BACKEND_URL:-http://host.docker.internal:8000}
+    container_name: school_ops_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
