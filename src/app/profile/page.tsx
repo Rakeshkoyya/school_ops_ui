@@ -132,14 +132,11 @@ export default function ProfilePage() {
                   <AtSign className="h-4 w-4" />
                   Username
                 </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={user.username}
-                    disabled
-                    className="bg-muted"
-                  />
-                  <Badge variant="secondary">Read-only</Badge>
-                </div>
+                <Input
+                  value={user.username}
+                  disabled
+                  className="bg-muted"
+                />
               </div>
 
               <div className="space-y-2">
