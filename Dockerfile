@@ -56,7 +56,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Make everything world-readable (Railway runs as arbitrary user)
+# Make everything world-readable (container may run as non-root user)
 RUN chmod -R a+rX /app
 
 # Expose port

@@ -14,7 +14,9 @@ let currentProjectId: number | null = null;
 export const setAccessToken = (token: string | null) => {
   accessToken = token;
   if (token) {
-    Cookies.set(TOKEN_KEY, token, { secure: true, sameSite: 'strict' });
+    // Only use secure cookies on HTTPS; allows HTTP in development/non-HTTPS deployments
+    const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    Cookies.set(TOKEN_KEY, token, { secure: isSecure, sameSite: 'lax' });
   } else {
     Cookies.remove(TOKEN_KEY);
   }

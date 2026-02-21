@@ -29,7 +29,7 @@ export function MenuProvider({ children }: MenuProviderProps) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMenus = useCallback(async () => {
-    if (!project?.id) {
+    if (!project?.id || !user) {
       setAllocatedMenus([]);
       return;
     }
@@ -50,16 +50,16 @@ export function MenuProvider({ children }: MenuProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [project?.id]);
+  }, [project?.id, user]);
 
-  // Fetch menus when project changes
+  // Fetch menus when project or user changes
   useEffect(() => {
-    if (project?.id) {
+    if (project?.id && user) {
       fetchMenus();
     } else {
       setAllocatedMenus([]);
     }
-  }, [project?.id, fetchMenus]);
+  }, [project?.id, user, fetchMenus]);
 
   const refreshMenus = useCallback(async () => {
     await fetchMenus();
