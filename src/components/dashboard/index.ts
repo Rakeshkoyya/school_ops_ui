@@ -4,3 +4,6 @@ export { AttendanceSummaryWidget } from './AttendanceSummaryWidget';
 export { ExamStatsWidget } from './ExamStatsWidget';
 export { EvoLeaderboardWidget } from './EvoLeaderboardWidget';
 export { StudentStatsWidget } from './StudentStatsWidget';
+export { MyTasksReportCard } from './MyTasksReportCard';
+export { ProjectTaskStatsCard } from './ProjectTaskStatsCard';
+export { UserLevelStatsCard } from './UserLevelStatsCard';

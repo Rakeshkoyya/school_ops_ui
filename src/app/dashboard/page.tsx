@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useProject } from '@/contexts/project-context';
 import { MainLayout } from '@/components/layout';
@@ -10,23 +10,24 @@ import { LayoutDashboard, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api-client';
 import {
-  TaskSummaryWidget,
-  TaskAnalyticsChart,
   AttendanceSummaryWidget,
   ExamStatsWidget,
-  EvoLeaderboardWidget,
   StudentStatsWidget,
+  MyTasksReportCard,
+  ProjectTaskStatsCard,
+  UserLevelStatsCard,
 } from '@/components/dashboard';
 import type { DashboardResponse } from '@/types';
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { project } = useProject();
+  const { project, isProjectAdmin } = useProject();
   const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     if (!project?.id) {
       setIsLoading(false);
       return;
@@ -44,20 +45,25 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [project?.id]);
 
   useEffect(() => {
     fetchDashboard();
-  }, [project?.id]);
+  }, [fetchDashboard]);
+
+  const handleRefresh = () => {
+    fetchDashboard();
+    setRefreshKey((k) => k + 1);
+  };
 
   const config = dashboardData?.widget_config;
-  const hasAnyWidget = config && (
-    config.show_tasks || 
-    config.show_attendance || 
-    config.show_exams || 
-    config.show_students || 
-    config.show_evo_points
-  );
+  const showTasks = config?.show_tasks ?? false;
+  const showNonTaskWidgets =
+    config &&
+    (config.show_attendance || config.show_exams || config.show_students);
+  const hasAnyWidget =
+    showTasks || showNonTaskWidgets;
+  const isAdmin = isProjectAdmin || user?.is_super_admin;
 
   return (
     <MainLayout>
@@ -75,7 +81,7 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchDashboard}
+            onClick={handleRefresh}
             disabled={isLoading}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -89,39 +95,25 @@ export default function DashboardPage() {
             <CardContent className="flex items-center gap-3 py-4">
               <AlertCircle className="h-5 w-5 text-red-600" />
               <p className="text-red-700">{error}</p>
-              <Button variant="outline" size="sm" onClick={fetchDashboard} className="ml-auto">
+              <Button variant="outline" size="sm" onClick={handleRefresh} className="ml-auto">
                 Retry
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Loading State */}
+        {/* Loading State (only for the legacy dashboard call) */}
         {isLoading && (
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {[...Array(4)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader className="pb-2">
-                    <Skeleton className="h-4 w-24" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-8 w-16" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {[...Array(3)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-5 w-32" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-[200px] w-full" />
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-2"><Skeleton className="h-5 w-28" /></CardHeader>
+                <CardContent><Skeleton className="h-75 w-full" /></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><Skeleton className="h-5 w-36" /></CardHeader>
+                <CardContent><Skeleton className="h-75 w-full" /></CardContent>
+              </Card>
             </div>
           </div>
         )}
@@ -149,43 +141,43 @@ export default function DashboardPage() {
         )}
 
         {/* Dashboard Widgets */}
-        {!isLoading && !error && hasAnyWidget && dashboardData && (
+        {!isLoading && !error && hasAnyWidget && (
           <div className="space-y-6">
-            {/* Task Summary Row */}
-            {config?.show_tasks && dashboardData.tasks && (
-              <TaskSummaryWidget data={dashboardData.tasks} />
+            {/* ===== Task Management Sections ===== */}
+            {showTasks && (
+              <>
+                {/* Row 1: My Tasks (left) + Project Overview (right) */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <MyTasksReportCard key={`my-tasks-${refreshKey}`} />
+                  <ProjectTaskStatsCard key={`proj-stats-${refreshKey}`} />
+                </div>
+
+                {/* Row 2: Team Stats (admin only, full width) */}
+                {isAdmin && (
+                  <UserLevelStatsCard key={`user-stats-${refreshKey}`} />
+                )}
+              </>
             )}
 
-            {/* Main Widgets Grid */}
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* Task Chart */}
-              {config?.show_tasks && dashboardData.tasks && (
-                <TaskAnalyticsChart data={dashboardData.tasks} />
-              )}
+            {/* ===== Non-Task Widgets ===== */}
+            {showNonTaskWidgets && dashboardData && (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {config?.show_attendance && dashboardData.attendance && (
+                  <AttendanceSummaryWidget
+                    data={dashboardData.attendance}
+                    byClass={dashboardData.attendance_by_class}
+                  />
+                )}
 
-              {/* Evo Points Leaderboard */}
-              {config?.show_evo_points && dashboardData.evo_points && (
-                <EvoLeaderboardWidget data={dashboardData.evo_points} />
-              )}
+                {config?.show_exams && (
+                  <ExamStatsWidget data={dashboardData.exams} />
+                )}
 
-              {/* Attendance Summary */}
-              {config?.show_attendance && dashboardData.attendance && (
-                <AttendanceSummaryWidget 
-                  data={dashboardData.attendance}
-                  byClass={dashboardData.attendance_by_class}
-                />
-              )}
-
-              {/* Exam Stats */}
-              {config?.show_exams && (
-                <ExamStatsWidget data={dashboardData.exams} />
-              )}
-
-              {/* Student Stats */}
-              {config?.show_students && dashboardData.students && (
-                <StudentStatsWidget data={dashboardData.students} />
-              )}
-            </div>
+                {config?.show_students && dashboardData.students && (
+                  <StudentStatsWidget data={dashboardData.students} />
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

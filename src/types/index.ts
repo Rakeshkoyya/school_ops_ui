@@ -834,6 +834,65 @@ export interface DashboardResponse {
   evo_points: EvoDashboardStats | null;
 }
 
+// ============================================
+// New Dashboard Section Types
+// ============================================
+
+// Lightweight task item for collapsible lists
+export interface TaskListItem {
+  id: number;
+  title: string;
+  due_datetime: string | null;
+  status: string;
+}
+
+// Section 1: My Tasks Report (all users)
+export interface MyTasksReport {
+  total_active: number;
+  total_completed: number;
+  today_total: number;
+  today_completed: number;
+  pending_count: number;
+  in_progress_count: number;
+  completed_count: number;
+  overdue_count: number;
+  pending_tasks: TaskListItem[];
+}
+
+// Section 2: Project Task Stats (all users)
+export interface ProjectTaskStatsResponse {
+  pending_count: number;
+  in_progress_count: number;
+  overdue_count: number;
+  completed_count: number;
+  active_tasks: number;
+  total_tasks: number;
+  status_distribution: TaskStatusCount;
+  evo_leaderboard: EvoLeaderboardEntry[];
+}
+
+// Section 3: User Level Stats (admin only)
+export interface UserDailyTaskRow {
+  user_id: number;
+  user_name: string;
+  today_total: number;
+  today_completed: number;
+  completion_percentage: number;
+  pending_count: number;
+  in_progress_count: number;
+  completed_count: number;
+  overdue_count: number;
+  pending_tasks: TaskListItem[];
+}
+
+export interface UserLevelStatsResponse {
+  today_total: number;
+  today_completed: number;
+  overall_total: number;
+  overall_completed: number;
+  user_rows: UserDailyTaskRow[];
+}
+
 // Legacy DashboardStats (for backward compatibility)
 export interface DashboardStats {
   pending_tasks: number;
