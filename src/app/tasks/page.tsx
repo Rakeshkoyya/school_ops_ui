@@ -158,34 +158,87 @@ function CategoryManagerDialog({
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; color: string }) => api.post('/tasks/categories', data),
+    mutationFn: (data: { name: string; color: string }) => api.post<TaskCategory>('/tasks/categories', data),
+    // Optimistic update - add to list immediately
+    onMutate: async (newCategory) => {
+      await queryClient.cancelQueries({ queryKey: ['task-categories'] });
+      
+      // Since we don't have the id yet, create a temp placeholder
+      const optimisticCategory: TaskCategory = {
+        id: Date.now(), // Temp ID
+        project_id: 0,
+        name: newCategory.name,
+        color: newCategory.color,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Get all matching queries and update them
+      queryClient.setQueriesData<TaskCategory[]>(
+        { queryKey: ['task-categories'] },
+        (old) => old ? [...old, optimisticCategory] : [optimisticCategory]
+      );
+      
+      return { optimisticId: optimisticCategory.id };
+    },
     onSuccess: () => {
       toast.success('Category created');
       queryClient.invalidateQueries({ queryKey: ['task-categories'] });
       setNewCategoryName('');
       setNewCategoryColor('#3B82F6');
     },
-    onError: () => toast.error('Failed to create category'),
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-categories'] });
+      toast.error('Failed to create category');
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, name, color }: { id: number; name: string; color: string }) =>
       api.patch(`/tasks/categories/${id}`, { name, color }),
+    // Optimistic update
+    onMutate: async ({ id, name, color }) => {
+      await queryClient.cancelQueries({ queryKey: ['task-categories'] });
+      
+      queryClient.setQueriesData<TaskCategory[]>(
+        { queryKey: ['task-categories'] },
+        (old) => old?.map(cat => cat.id === id ? { ...cat, name, color } : cat)
+      );
+      
+      return { id };
+    },
     onSuccess: () => {
       toast.success('Category updated');
       queryClient.invalidateQueries({ queryKey: ['task-categories'] });
       setEditingId(null);
     },
-    onError: () => toast.error('Failed to update category'),
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-categories'] });
+      toast.error('Failed to update category');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/tasks/categories/${id}`),
+    // Optimistic update - remove immediately
+    onMutate: async (categoryId) => {
+      await queryClient.cancelQueries({ queryKey: ['task-categories'] });
+      
+      queryClient.setQueriesData<TaskCategory[]>(
+        { queryKey: ['task-categories'] },
+        (old) => old?.filter(cat => cat.id !== categoryId)
+      );
+      
+      return { categoryId };
+    },
     onSuccess: () => {
       toast.success('Category deleted');
       queryClient.invalidateQueries({ queryKey: ['task-categories'] });
     },
-    onError: () => toast.error('Failed to delete category'),
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-categories'] });
+      toast.error('Failed to delete category');
+    },
   });
 
   return (
@@ -1256,25 +1309,115 @@ export default function TasksPage() {
   const updateTaskMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Task> }) =>
       api.patch(`/tasks/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    // Optimistic update for immediate UI feedback
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['my-tasks'] });
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      
+      const previousMyTasks = queryClient.getQueryData<Task[]>(['my-tasks', project?.id]);
+      const previousAllTasks = queryClient.getQueryData<TasksResponse>(['tasks', project?.id]);
+      
+      // Update my-tasks cache
+      if (previousMyTasks) {
+        queryClient.setQueryData<Task[]>(['my-tasks', project?.id],
+          previousMyTasks.map(task =>
+            task.id === id ? { ...task, ...data } : task
+          )
+        );
+      }
+      
+      // Update all-tasks cache
+      if (previousAllTasks) {
+        queryClient.setQueryData<TasksResponse>(['tasks', project?.id], {
+          ...previousAllTasks,
+          items: previousAllTasks.items.map(task =>
+            task.id === id ? { ...task, ...data } : task
+          )
+        });
+      }
+      
+      return { previousMyTasks, previousAllTasks };
     },
-    onError: () => toast.error('Failed to update task'),
+    onSuccess: () => {
+      // Only invalidate the active view to reduce API calls
+      if (viewMode === 'my') {
+        queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
+    },
+    onError: (_err, _params, context) => {
+      // Rollback on error
+      if (context?.previousMyTasks) {
+        queryClient.setQueryData(['my-tasks', project?.id], context.previousMyTasks);
+      }
+      if (context?.previousAllTasks) {
+        queryClient.setQueryData(['tasks', project?.id], context.previousAllTasks);
+      }
+      toast.error('Failed to update task');
+    },
   });
 
   const startTaskMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/tasks/${id}/start`),
+    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/start`),
+    // Optimistic update - immediately reflect the change in UI
+    onMutate: async (taskId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['my-tasks'] });
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      
+      // Snapshot the previous value
+      const previousMyTasks = queryClient.getQueryData<Task[]>(['my-tasks', project?.id]);
+      
+      // Optimistically update to the new value
+      if (previousMyTasks) {
+        queryClient.setQueryData<Task[]>(['my-tasks', project?.id], 
+          previousMyTasks.map(task => 
+            task.id === taskId 
+              ? { ...task, status: 'in_progress' as TaskStatus, start_time: new Date().toISOString() }
+              : task
+          )
+        );
+      }
+      
+      return { previousMyTasks };
+    },
     onSuccess: () => {
       toast.success('Task started');
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Only invalidate the active view
+      if (viewMode === 'my') {
+        queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
     },
-    onError: () => toast.error('Failed to start task'),
+    onError: (_err, _taskId, context) => {
+      // Rollback on error
+      if (context?.previousMyTasks) {
+        queryClient.setQueryData(['my-tasks', project?.id], context.previousMyTasks);
+      }
+      toast.error('Failed to start task');
+    },
   });
 
   const completeTaskMutation = useMutation({
     mutationFn: (id: number) => api.post<TaskCompletionResponse>(`/tasks/${id}/complete`),
+    // Optimistic update
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: ['my-tasks'] });
+      const previousMyTasks = queryClient.getQueryData<Task[]>(['my-tasks', project?.id]);
+      
+      if (previousMyTasks) {
+        queryClient.setQueryData<Task[]>(['my-tasks', project?.id], 
+          previousMyTasks.map(task => 
+            task.id === taskId 
+              ? { ...task, status: 'done' as TaskStatus, end_time: new Date().toISOString() }
+              : task
+          )
+        );
+      }
+      return { previousMyTasks };
+    },
     onSuccess: (data) => {
       if (data.points_earned && data.points_earned > 0) {
         if (data.was_late && data.original_points) {
@@ -1287,11 +1430,20 @@ export default function TasksPage() {
       } else {
         toast.success('Task completed');
       }
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Only invalidate active view
+      if (viewMode === 'my') {
+        queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
       queryClient.invalidateQueries({ queryKey: ['evo-points-balance'] });
     },
-    onError: () => toast.error('Failed to complete task'),
+    onError: (_err, _taskId, context) => {
+      if (context?.previousMyTasks) {
+        queryClient.setQueryData(['my-tasks', project?.id], context.previousMyTasks);
+      }
+      toast.error('Failed to complete task');
+    },
   });
 
   const revertTaskMutation = useMutation({
@@ -1299,8 +1451,12 @@ export default function TasksPage() {
       api.post(`/tasks/${id}/revert?target_status=${targetStatus}`),
     onSuccess: () => {
       toast.success('Task reverted successfully');
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Only invalidate active view
+      if (viewMode === 'my') {
+        queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
       queryClient.invalidateQueries({ queryKey: ['evo-points-balance'] });
     },
     onError: () => toast.error('Failed to revert task'),
@@ -1310,8 +1466,12 @@ export default function TasksPage() {
     mutationFn: (id: number) => api.delete(`/tasks/${id}`),
     onSuccess: () => {
       toast.success('Task deleted');
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Only invalidate active view
+      if (viewMode === 'my') {
+        queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
     },
     onError: () => toast.error('Failed to delete task'),
   });
@@ -1319,30 +1479,96 @@ export default function TasksPage() {
   // Recurring Template Mutations
   const toggleTemplateMutation = useMutation({
     mutationFn: (id: number) => api.post<RecurringTaskTemplate>(`/tasks/recurring-templates/${id}/toggle`),
+    // Optimistic update for instant UI feedback
+    onMutate: async (templateId) => {
+      await queryClient.cancelQueries({ queryKey: ['recurring-templates'] });
+      
+      // Get full query key including filters
+      const queryKey = ['recurring-templates', project?.id, isProjectAdmin, scheduledStatusFilter, scheduledAssigneeFilter];
+      const previousTemplates = queryClient.getQueryData<RecurringTaskTemplate[]>(queryKey);
+      
+      if (previousTemplates) {
+        queryClient.setQueryData<RecurringTaskTemplate[]>(queryKey,
+          previousTemplates.map(template =>
+            template.id === templateId
+              ? { ...template, is_active: !template.is_active }
+              : template
+          )
+        );
+      }
+      return { previousTemplates, queryKey };
+    },
     onSuccess: (data) => {
       toast.success(`Schedule ${data.is_active ? 'enabled' : 'disabled'}`);
       queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
     },
-    onError: () => toast.error('Failed to toggle schedule'),
+    onError: (_err, _templateId, context) => {
+      if (context?.previousTemplates && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTemplates);
+      }
+      toast.error('Failed to toggle schedule');
+    },
   });
 
   const deleteTemplateMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/tasks/recurring-templates/${id}`),
+    // Optimistic update - immediately remove from list
+    onMutate: async (templateId) => {
+      await queryClient.cancelQueries({ queryKey: ['recurring-templates'] });
+      
+      const queryKey = ['recurring-templates', project?.id, isProjectAdmin, scheduledStatusFilter, scheduledAssigneeFilter];
+      const previousTemplates = queryClient.getQueryData<RecurringTaskTemplate[]>(queryKey);
+      
+      if (previousTemplates) {
+        queryClient.setQueryData<RecurringTaskTemplate[]>(queryKey,
+          previousTemplates.filter(template => template.id !== templateId)
+        );
+      }
+      return { previousTemplates, queryKey };
+    },
     onSuccess: () => {
       toast.success('Schedule deleted');
       queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
     },
-    onError: () => toast.error('Failed to delete schedule'),
+    onError: (_err, _templateId, context) => {
+      if (context?.previousTemplates && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTemplates);
+      }
+      toast.error('Failed to delete schedule');
+    },
   });
 
   const updateTemplateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateRecurringTaskTemplatePayload }) =>
       api.patch<RecurringTaskTemplate>(`/tasks/recurring-templates/${id}`, data),
+    // Optimistic update
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['recurring-templates'] });
+      
+      const queryKey = ['recurring-templates', project?.id, isProjectAdmin, scheduledStatusFilter, scheduledAssigneeFilter];
+      const previousTemplates = queryClient.getQueryData<RecurringTaskTemplate[]>(queryKey);
+      
+      if (previousTemplates) {
+        queryClient.setQueryData<RecurringTaskTemplate[]>(queryKey,
+          previousTemplates.map(template =>
+            template.id === id
+              ? { ...template, ...data }
+              : template
+          )
+        );
+      }
+      return { previousTemplates, queryKey };
+    },
     onSuccess: () => {
       toast.success('Schedule updated');
       queryClient.invalidateQueries({ queryKey: ['recurring-templates'] });
     },
-    onError: () => toast.error('Failed to update schedule'),
+    onError: (_err, _params, context) => {
+      if (context?.previousTemplates && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTemplates);
+      }
+      toast.error('Failed to update schedule');
+    },
   });
 
   // Filtered Tasks (for DataTable - no local filtering, let DataTable handle it)

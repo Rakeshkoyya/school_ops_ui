@@ -17,6 +17,7 @@ import { api } from '@/lib/api-client';
 import type { MyTasksReport } from '@/types';
 
 interface MyTasksReportCardProps {
+  data?: MyTasksReport;  // Optional - if provided, skip fetch
   onError?: (msg: string) => void;
 }
 
@@ -27,15 +28,24 @@ const STATUS_COLORS = {
   overdue: { text: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/40' },
 };
 
-export function MyTasksReportCard({ onError }: MyTasksReportCardProps) {
-  const [data, setData] = useState<MyTasksReport | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export function MyTasksReportCard({ data: propData, onError }: MyTasksReportCardProps) {
+  const [fetchedData, setFetchedData] = useState<MyTasksReport | null>(null);
+  const [isLoading, setIsLoading] = useState(!propData);
+
+  // Use prop data if provided, otherwise use fetched data
+  const data = propData ?? fetchedData;
 
   useEffect(() => {
+    // Skip fetch if data is provided via props
+    if (propData) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchData = async () => {
       try {
         const res = await api.get<MyTasksReport>('/dashboard/my-tasks');
-        setData(res);
+        setFetchedData(res);
       } catch {
         onError?.('Failed to load your tasks report.');
       } finally {
@@ -43,7 +53,7 @@ export function MyTasksReportCard({ onError }: MyTasksReportCardProps) {
       }
     };
     fetchData();
-  }, [onError]);
+  }, [propData, onError]);
 
   if (isLoading) {
     return (

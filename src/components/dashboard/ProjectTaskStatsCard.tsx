@@ -26,6 +26,7 @@ import { api } from '@/lib/api-client';
 import type { ProjectTaskStatsResponse } from '@/types';
 
 interface ProjectTaskStatsCardProps {
+  data?: ProjectTaskStatsResponse;  // Optional - if provided, skip fetch
   onError?: (msg: string) => void;
 }
 
@@ -67,17 +68,26 @@ const getRankBg = (rank: number) => {
   }
 };
 
-export function ProjectTaskStatsCard({ onError }: ProjectTaskStatsCardProps) {
-  const [data, setData] = useState<ProjectTaskStatsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export function ProjectTaskStatsCard({ data: propData, onError }: ProjectTaskStatsCardProps) {
+  const [fetchedData, setFetchedData] = useState<ProjectTaskStatsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(!propData);
+
+  // Use prop data if provided, otherwise use fetched data
+  const data = propData ?? fetchedData;
 
   useEffect(() => {
+    // Skip fetch if data is provided via props
+    if (propData) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchData = async () => {
       try {
         const res = await api.get<ProjectTaskStatsResponse>(
           '/dashboard/project-stats',
         );
-        setData(res);
+        setFetchedData(res);
       } catch {
         onError?.('Failed to load project stats.');
       } finally {
@@ -85,7 +95,7 @@ export function ProjectTaskStatsCard({ onError }: ProjectTaskStatsCardProps) {
       }
     };
     fetchData();
-  }, [onError]);
+  }, [propData, onError]);
 
   if (isLoading) {
     return (

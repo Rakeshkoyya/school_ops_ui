@@ -17,15 +17,25 @@ import {
   ProjectTaskStatsCard,
   UserLevelStatsCard,
 } from '@/components/dashboard';
-import type { DashboardResponse } from '@/types';
+import type { DashboardResponse, MyTasksReport, ProjectTaskStatsResponse, UserLevelStatsResponse } from '@/types';
+
+// Combined dashboard data type
+interface AllDashboardData {
+  main: DashboardResponse;
+  myTasks?: MyTasksReport;
+  projectStats?: ProjectTaskStatsResponse;
+  userStats?: UserLevelStatsResponse;
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { project, isProjectAdmin } = useProject();
-  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
+  const [dashboardData, setDashboardData] = useState<AllDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const isAdmin = isProjectAdmin || user?.is_super_admin;
 
   const fetchDashboard = useCallback(async () => {
     if (!project?.id) {
@@ -37,15 +47,29 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      const data = await api.get<DashboardResponse>('/dashboard');
-      setDashboardData(data);
+      // Fetch all dashboard data in parallel for better performance
+      const mainPromise = api.get<DashboardResponse>('/dashboard');
+      const myTasksPromise = api.get<MyTasksReport>('/dashboard/my-tasks').catch(() => undefined);
+      const projectStatsPromise = api.get<ProjectTaskStatsResponse>('/dashboard/project-stats').catch(() => undefined);
+      const userStatsPromise = isAdmin 
+        ? api.get<UserLevelStatsResponse>('/dashboard/user-stats').catch(() => undefined)
+        : Promise.resolve(undefined);
+
+      const [main, myTasks, projectStats, userStats] = await Promise.all([
+        mainPromise,
+        myTasksPromise,
+        projectStatsPromise,
+        userStatsPromise,
+      ]);
+
+      setDashboardData({ main, myTasks, projectStats, userStats });
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
       setError('Failed to load dashboard data. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  }, [project?.id]);
+  }, [project?.id, isAdmin]);
 
   useEffect(() => {
     fetchDashboard();
@@ -56,14 +80,13 @@ export default function DashboardPage() {
     setRefreshKey((k) => k + 1);
   };
 
-  const config = dashboardData?.widget_config;
+  const config = dashboardData?.main?.widget_config;
   const showTasks = config?.show_tasks ?? false;
   const showNonTaskWidgets =
     config &&
     (config.show_attendance || config.show_exams || config.show_students);
   const hasAnyWidget =
     showTasks || showNonTaskWidgets;
-  const isAdmin = isProjectAdmin || user?.is_super_admin;
 
   return (
     <MainLayout>
@@ -148,13 +171,13 @@ export default function DashboardPage() {
               <>
                 {/* Row 1: My Tasks (left) + Project Overview (right) */}
                 <div className="grid gap-6 lg:grid-cols-2">
-                  <MyTasksReportCard key={`my-tasks-${refreshKey}`} />
-                  <ProjectTaskStatsCard key={`proj-stats-${refreshKey}`} />
+                  <MyTasksReportCard key={`my-tasks-${refreshKey}`} data={dashboardData?.myTasks} />
+                  <ProjectTaskStatsCard key={`proj-stats-${refreshKey}`} data={dashboardData?.projectStats} />
                 </div>
 
                 {/* Row 2: Team Stats (admin only, full width) */}
                 {isAdmin && (
-                  <UserLevelStatsCard key={`user-stats-${refreshKey}`} />
+                  <UserLevelStatsCard key={`user-stats-${refreshKey}`} data={dashboardData?.userStats} />
                 )}
               </>
             )}
@@ -162,19 +185,19 @@ export default function DashboardPage() {
             {/* ===== Non-Task Widgets ===== */}
             {showNonTaskWidgets && dashboardData && (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {config?.show_attendance && dashboardData.attendance && (
+                {config?.show_attendance && dashboardData.main.attendance && (
                   <AttendanceSummaryWidget
-                    data={dashboardData.attendance}
-                    byClass={dashboardData.attendance_by_class}
+                    data={dashboardData.main.attendance}
+                    byClass={dashboardData.main.attendance_by_class}
                   />
                 )}
 
                 {config?.show_exams && (
-                  <ExamStatsWidget data={dashboardData.exams} />
+                  <ExamStatsWidget data={dashboardData.main.exams} />
                 )}
 
-                {config?.show_students && dashboardData.students && (
-                  <StudentStatsWidget data={dashboardData.students} />
+                {config?.show_students && dashboardData.main.students && (
+                  <StudentStatsWidget data={dashboardData.main.students} />
                 )}
               </div>
             )}

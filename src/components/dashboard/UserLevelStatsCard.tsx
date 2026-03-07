@@ -25,6 +25,7 @@ import { api } from '@/lib/api-client';
 import type { UserLevelStatsResponse, UserDailyTaskRow } from '@/types';
 
 interface UserLevelStatsCardProps {
+  data?: UserLevelStatsResponse;  // Optional - if provided, skip fetch
   onError?: (msg: string) => void;
 }
 
@@ -141,24 +142,33 @@ function UserRow({ row }: { row: UserDailyTaskRow }) {
   );
 }
 
-export function UserLevelStatsCard({ onError }: UserLevelStatsCardProps) {
-  const [data, setData] = useState<UserLevelStatsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export function UserLevelStatsCard({ data: propData, onError }: UserLevelStatsCardProps) {
+  const [fetchedData, setFetchedData] = useState<UserLevelStatsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(!propData);
+
+  // Use prop data if provided, otherwise use fetched data
+  const data = propData ?? fetchedData;
 
   useEffect(() => {
+    // Skip fetch if data is provided via props
+    if (propData) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchData = async () => {
       try {
         const res = await api.get<UserLevelStatsResponse>('/dashboard/user-stats');
-        setData(res);
+        setFetchedData(res);
       } catch {
         // Silently fail for non-admins (403)
-        setData(null);
+        setFetchedData(null);
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, [onError]);
+  }, [propData, onError]);
 
   if (isLoading) {
     return (
