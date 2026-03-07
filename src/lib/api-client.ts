@@ -73,6 +73,7 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,  // Enable sending cookies for session persistence
 });
 
 // Request Interceptor
@@ -102,22 +103,29 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiError>) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url || '';
 
     // Handle 401 Unauthorized
+    // Don't redirect for auth endpoints like /auth/session, /auth/login, /auth/google
+    // These are expected to return 401 when session is invalid
     if (error.response?.status === 401) {
-      clearAccessToken();
-      clearCurrentProjectId();
+      const isAuthEndpoint = requestUrl.includes('/auth/');
       
-      // Redirect to login (only in browser)
-      if (typeof window !== 'undefined') {
-        window.location.href = '/auth/login';
+      if (!isAuthEndpoint) {
+        clearAccessToken();
+        clearCurrentProjectId();
+        
+        // Redirect to login (only in browser)
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
       }
     }
 
     // Handle 403 Forbidden
     if (error.response?.status === 403) {
       // Could redirect to a forbidden page or show a toast
-      if (typeof window !== 'undefined' && !originalRequest?.url?.includes('/auth/')) {
+      if (typeof window !== 'undefined' && !requestUrl.includes('/auth/')) {
         window.location.href = '/forbidden';
       }
     }
@@ -171,6 +179,63 @@ export const api = {
         },
       })
       .then((res) => res.data),
+};
+
+// Session restoration types
+interface SessionRestoreResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+interface GoogleAuthResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  is_new_user: boolean;
+  user_id: number;
+  email: string | null;
+}
+
+/**
+ * Attempt to restore session from HTTP-only refresh token cookie.
+ * This should be called on app initialization to check if user has a valid session.
+ * 
+ * @returns access_token if session is valid, null otherwise
+ */
+export const restoreSession = async (): Promise<string | null> => {
+  try {
+    const response = await apiClient.get<SessionRestoreResponse>('/auth/session');
+    const token = response.data.access_token;
+    setAccessToken(token);
+    return token;
+  } catch {
+    // No valid session - clear any stale tokens
+    clearAccessToken();
+    return null;
+  }
+};
+
+/**
+ * Authenticate with Google OAuth.
+ * 
+ * @param code - Authorization code from Google
+ * @param redirectUri - The redirect URI used in the OAuth flow
+ * @returns GoogleAuthResponse with access_token and user info
+ */
+export const authenticateWithGoogle = async (
+  code: string,
+  redirectUri: string
+): Promise<GoogleAuthResponse> => {
+  const response = await apiClient.post<GoogleAuthResponse>('/auth/google', {
+    code,
+    redirect_uri: redirectUri,
+  });
+  
+  // Store the access token
+  setAccessToken(response.data.access_token);
+  
+  return response.data;
 };
 
 export default apiClient;

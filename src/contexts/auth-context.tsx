@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, setAccessToken, clearAccessToken, getAccessToken } from '@/lib/api-client';
+import { api, setAccessToken, clearAccessToken, getAccessToken, restoreSession, authenticateWithGoogle } from '@/lib/api-client';
 import type { User, ProjectInfo, UserRoleInfo, ProjectWithRole, AuthMeResponse, AuthResponse } from '@/types';
 
 // Helper to combine ProjectInfo and UserRoleInfo into ProjectWithRole for easier frontend use
@@ -32,6 +32,7 @@ interface AuthContextType {
   isLoading: boolean;
   isFirstLogin: boolean;
   login: (username: string, password: string) => Promise<void>;
+  loginWithGoogle: (code: string) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<{ user: User; projects: ProjectInfo[]; userRoles: UserRoleInfo[]; permissions: string[] } | null>;
   setActivePermissions: (permissions: string[]) => void;
@@ -62,7 +63,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshAuth = useCallback(async (): Promise<{ user: User; projects: ProjectInfo[]; userRoles: UserRoleInfo[]; permissions: string[] } | null> => {
     try {
-      const token = getAccessToken();
+      let token = getAccessToken();
+      
+      // If no token in memory/cookie, try to restore session from HTTP-only refresh token cookie
+      if (!token) {
+        token = await restoreSession();
+      }
+      
       if (!token) {
         setUser(null);
         setProjects([]);
@@ -154,15 +161,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const userProjects = authData?.projects ?? [];
     const roles = authData?.userRoles ?? [];
     
+    // If user has no projects, go to welcome page
     // If user has exactly one project and role, go to dashboard (AuthGuard will auto-select)
     // If user has multiple projects or roles, go to select-project
-    // If user has no projects, go to dashboard (will show empty state)
-    if (userProjects.length === 1 && roles.length === 1) {
+    if (userProjects.length === 0) {
+      router.push('/welcome');
+    } else if (userProjects.length === 1 && roles.length === 1) {
       router.push('/dashboard');
-    } else if (userProjects.length >= 1) {
-      router.push('/select-project');
     } else {
+      router.push('/select-project');
+    }
+  };
+
+  const loginWithGoogle = async (code: string) => {
+    // Clear stale project data before login to ensure fresh state
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('current_project');
+      localStorage.removeItem('current_project_id');
+      window.dispatchEvent(new CustomEvent('project-cleared'));
+    }
+    
+    // Get the redirect URI (current origin)
+    const redirectUri = typeof window !== 'undefined' ? window.location.origin : '';
+    
+    // Exchange Google code for our JWT tokens
+    const response = await authenticateWithGoogle(code, redirectUri);
+    
+    // Fetch full auth data
+    const authData = await refreshAuth();
+    
+    // Navigate based on projects
+    const userProjects = authData?.projects ?? [];
+    const roles = authData?.userRoles ?? [];
+    
+    // If user has no projects (new user or unmapped), go to welcome page
+    // If user has exactly one project and role, go to dashboard
+    // If user has multiple projects or roles, go to select-project
+    if (userProjects.length === 0) {
+      router.push('/welcome');
+    } else if (userProjects.length === 1 && roles.length === 1) {
       router.push('/dashboard');
+    } else {
+      router.push('/select-project');
     }
   };
 
@@ -244,6 +284,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     isFirstLogin,
     login,
+    loginWithGoogle,
     logout,
     refreshAuth,
     setActivePermissions,

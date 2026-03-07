@@ -14,7 +14,7 @@ interface AuthGuardProps {
 const PUBLIC_ROUTES = ['/auth/login', '/auth/forgot-password', '/auth/reset-password'];
 
 // Routes that don't require project selection
-const NO_PROJECT_ROUTES = ['/select-project', '/auth/login', '/auth/forgot-password', '/auth/reset-password', '/admin'];
+const NO_PROJECT_ROUTES = ['/select-project', '/welcome', '/auth/login', '/auth/forgot-password', '/auth/reset-password', '/admin'];
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const { isAuthenticated, isLoading, projects, userRoles, user, setActivePermissions, getProjectWithRole } = useAuth();
@@ -69,6 +69,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     // Redirect authenticated users away from auth pages
     if (isAuthenticated && isPublicRoute) {
+      // Users with no projects should go to welcome page
+      if (projectCount === 0 && !isSuperAdmin) {
+        router.replace('/welcome');
+        return;
+      }
       // Super admin can go directly to dashboard (admin mode)
       if (isSuperAdmin) {
         router.replace('/dashboard');
@@ -77,6 +82,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
       } else {
         router.replace('/dashboard');
       }
+      return;
+    }
+
+    // Redirect users with no projects to welcome page (except super admins)
+    if (isAuthenticated && projectCount === 0 && !isSuperAdmin && pathname !== '/welcome') {
+      router.replace('/welcome');
       return;
     }
 

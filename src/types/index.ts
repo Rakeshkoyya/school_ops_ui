@@ -26,6 +26,7 @@ export interface User {
   id: number;
   username: string;
   name: string;
+  email?: string;
   phone?: string;
   is_active: boolean;
   is_super_admin: boolean;

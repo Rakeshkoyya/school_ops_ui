@@ -11,6 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckSquare, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
+import { Separator } from '@/components/ui/separator';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -20,8 +22,9 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -64,6 +67,38 @@ export default function LoginPage() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {/* Google Sign-In */}
+          <GoogleSignInButton
+            onSuccess={async (code) => {
+              setIsGoogleLoading(true);
+              setError(null);
+              try {
+                await loginWithGoogle(code);
+              } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : 'Failed to sign in with Google';
+                setError(errorMessage);
+              } finally {
+                setIsGoogleLoading(false);
+              }
+            }}
+            onError={(errorMsg) => {
+              setError(errorMsg);
+            }}
+            disabled={isLoading || isGoogleLoading}
+          />
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or sign in with credentials
+              </span>
+            </div>
+          </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -123,7 +158,7 @@ export default function LoginPage() {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
