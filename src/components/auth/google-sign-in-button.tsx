@@ -5,6 +5,9 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
+// Check if Google OAuth is configured at build time
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
 // Google "G" icon SVG component
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -35,7 +38,8 @@ interface GoogleSignInButtonProps {
   disabled?: boolean;
 }
 
-export function GoogleSignInButton({
+// Inner component that uses the Google OAuth hook (only rendered when OAuth is configured)
+function GoogleSignInButtonInner({
   onSuccess,
   onError,
   disabled = false,
@@ -89,4 +93,14 @@ export function GoogleSignInButton({
       )}
     </Button>
   );
+}
+
+// Export wrapper that only renders the Google button if OAuth is configured
+export function GoogleSignInButton(props: GoogleSignInButtonProps) {
+  // If Google OAuth is not configured, don't render the button
+  if (!GOOGLE_CLIENT_ID) {
+    return null;
+  }
+
+  return <GoogleSignInButtonInner {...props} />;
 }
