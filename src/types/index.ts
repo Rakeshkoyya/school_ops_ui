@@ -918,6 +918,30 @@ export interface AssignRolePayload {
   role_ids: number[];
 }
 
+// Project Import/Export Types
+export interface ImportEntitySummary {
+  created: number;
+  matched: number;
+  skipped: number;
+}
+
+export interface ProjectImportResult {
+  project_id: number;
+  project_name: string;
+  project_slug: string;
+  users: ImportEntitySummary;
+  roles: ImportEntitySummary;
+  role_permissions: ImportEntitySummary;
+  user_role_assignments: ImportEntitySummary;
+  task_categories: ImportEntitySummary;
+  recurring_task_templates: ImportEntitySummary;
+  tasks: ImportEntitySummary;
+  task_view_styles: ImportEntitySummary;
+  user_task_view_preferences: ImportEntitySummary;
+  project_menu_screens: ImportEntitySummary;
+  warnings: string[];
+}
+
 // Settings Types
 export interface ProjectSettings {
   id: number;

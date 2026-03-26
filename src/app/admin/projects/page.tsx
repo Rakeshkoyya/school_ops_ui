@@ -38,6 +38,10 @@ import {
   Trash2,
   MoreHorizontal,
   Building2,
+  Download,
+  Upload,
+  FileUp,
+  Loader2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -62,8 +66,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import type { Project } from '@/types';
+import type { Project, ProjectImportResult } from '@/types';
 import { format, isValid, parseISO } from 'date-fns';
+import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 
 // Helper function to safely format dates
@@ -302,6 +307,10 @@ export default function AdminProjectsPage() {
   const [editingProject, setEditingProject] = useState<Project | undefined>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<Record<string, unknown> | null>(null);
+  const [exportingId, setExportingId] = useState<number | null>(null);
   const { user, refreshAuth } = useAuth();
   const queryClient = useQueryClient();
 
@@ -324,6 +333,73 @@ export default function AdminProjectsPage() {
       toast.error('Failed to delete project');
     },
   });
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.upload<ProjectImportResult>('/projects/import', formData);
+    },
+    onSuccess: (result) => {
+      toast.success(`Project "${result.project_name}" imported successfully`);
+      queryClient.invalidateQueries({ queryKey: ['admin-projects'] });
+      setImportDialogOpen(false);
+      setImportFile(null);
+      setImportPreview(null);
+    },
+    onError: (error: unknown) => {
+      const msg = (error as { response?: { data?: { error?: { message?: string }; detail?: string } } })?.response?.data?.error?.message
+        || (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || 'Import failed';
+      toast.error(msg);
+    },
+  });
+
+  const handleExport = async (project: Project) => {
+    setExportingId(project.id);
+    try {
+      const response = await apiClient.get(`/projects/${project.id}/export`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${project.slug}_export.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Project exported successfully');
+    } catch {
+      toast.error('Failed to export project');
+    } finally {
+      setExportingId(null);
+    }
+  };
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        setImportPreview(json);
+      } catch {
+        toast.error('Invalid JSON file');
+        setImportFile(null);
+        setImportPreview(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportSubmit = () => {
+    if (importFile) {
+      importMutation.mutate(importFile);
+    }
+  };
 
   // Mock data for development
   const mockProjects: Project[] = [
@@ -426,10 +502,16 @@ export default function AdminProjectsPage() {
               Manage all schools and projects in the system
             </p>
           </div>
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Project
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { setImportDialogOpen(true); setImportFile(null); setImportPreview(null); }}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import Project
+            </Button>
+            <Button onClick={handleCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Project
+            </Button>
+          </div>
         </div>
 
         {/* Search and Stats */}
@@ -534,6 +616,17 @@ export default function AdminProjectsPage() {
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={() => handleExport(project)}
+                              disabled={exportingId === project.id}
+                            >
+                              {exportingId === project.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="mr-2 h-4 w-4" />
+                              )}
+                              Export
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               className="text-destructive"
                               onClick={() => handleDeleteClick(project)}
                             >
@@ -559,6 +652,80 @@ export default function AdminProjectsPage() {
         onClose={handleDialogClose}
         onProjectCreated={refreshAuth}
       />
+
+      {/* Import Project Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => { setImportDialogOpen(open); if (!open) { setImportFile(null); setImportPreview(null); } }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Import Project</DialogTitle>
+            <DialogDescription>
+              Upload a previously exported project JSON file to create a new project with all its data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="import-file">Export File (.json)</Label>
+              <Input
+                id="import-file"
+                type="file"
+                accept=".json"
+                onChange={handleImportFileChange}
+              />
+            </div>
+            {importPreview && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    {(importPreview.project as Record<string, unknown>)?.name as string || 'Unknown'}
+                  </CardTitle>
+                  <CardDescription>
+                    Slug: {(importPreview.project as Record<string, unknown>)?.slug as string || '-'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <span className="text-muted-foreground">Users:</span>
+                    <span>{(importPreview.users as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">Roles:</span>
+                    <span>{(importPreview.roles as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">Task Categories:</span>
+                    <span>{(importPreview.task_categories as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">Tasks:</span>
+                    <span>{(importPreview.tasks as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">Recurring Templates:</span>
+                    <span>{(importPreview.recurring_task_templates as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">View Styles:</span>
+                    <span>{(importPreview.task_view_styles as unknown[])?.length ?? 0}</span>
+                    <span className="text-muted-foreground">Menu Screens:</span>
+                    <span>{(importPreview.project_menu_screens as unknown[])?.length ?? 0}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImportSubmit}
+              disabled={!importFile || importMutation.isPending}
+            >
+              {importMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <FileUp className="mr-2 h-4 w-4" />
+                  Import Project
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
