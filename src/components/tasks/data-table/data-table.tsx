@@ -25,6 +25,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Save, X } from "lucide-react"
 import { DataTablePagination } from "./data-table-pagination"
 import { DataTableToolbar } from "./data-table-toolbar"
 
@@ -44,6 +54,18 @@ interface DataTableProps<TData, TValue> {
   dateFilterColumnId?: string
   /** Optional slot for additional toolbar actions (e.g., create task button) */
   toolbarActions?: React.ReactNode
+  /** Show inline editable row for creating new task */
+  showNewTaskRow?: boolean
+  /** Callback when user clicks save on new task row */
+  onSaveNewTask?: (data: any) => void
+  /** Callback when user cancels new task row */
+  onCancelNewTask?: () => void
+  /** Categories for the new task dropdown */
+  categories?: Array<{ id: number; name: string }>
+  /** Staff list for assignee dropdown */
+  staffList?: Array<{ id: number; name: string }>
+  /** Callback when New Task button is clicked in toolbar */
+  onNewTaskClick?: () => void
 }
 
 export function DataTable<TData, TValue>({
@@ -53,11 +75,50 @@ export function DataTable<TData, TValue>({
   searchableColumns = [],
   dateFilterColumnId,
   toolbarActions,
+  showNewTaskRow = false,
+  onSaveNewTask,
+  onCancelNewTask,
+  categories = [],
+  staffList = [],
+  onNewTaskClick,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [sorting, setSorting] = React.useState<SortingState>([])
+  
+  // New task row state
+  const [newTaskData, setNewTaskData] = React.useState({
+    title: '',
+    description: '',
+    category_id: undefined as number | undefined,
+    assigned_to_user_id: undefined as number | undefined,
+    due_datetime: '',
+  })
+
+  const handleSaveNewTask = () => {
+    if (newTaskData.title.trim() && onSaveNewTask) {
+      onSaveNewTask(newTaskData)
+      setNewTaskData({
+        title: '',
+        description: '',
+        category_id: undefined,
+        assigned_to_user_id: undefined,
+        due_datetime: '',
+      })
+    }
+  }
+
+  const handleCancelNewTask = () => {
+    setNewTaskData({
+      title: '',
+      description: '',
+      category_id: undefined,
+      assigned_to_user_id: undefined,
+      due_datetime: '',
+    })
+    onCancelNewTask?.()
+  }
 
   const table = useReactTable({
     data,
@@ -88,6 +149,7 @@ export function DataTable<TData, TValue>({
         filterableColumns={filterableColumns}
         searchableColumns={searchableColumns}
         dateFilterColumnId={dateFilterColumnId}
+        onNewTaskClick={onNewTaskClick}
       >
         {toolbarActions}
       </DataTableToolbar>
@@ -114,6 +176,95 @@ export function DataTable<TData, TValue>({
             ))}
           </TableHeader>
           <TableBody>
+            {/* New Task Editable Row */}
+            {showNewTaskRow && (
+              <TableRow className="bg-blue-50/50 border-b-2 border-blue-200">
+                <TableCell className="w-[50px]"></TableCell>
+                <TableCell className="min-w-[200px]">
+                  <Input
+                    placeholder="Task title..."
+                    value={newTaskData.title}
+                    onChange={(e) => setNewTaskData({ ...newTaskData, title: e.target.value })}
+                    className="h-8"
+                    autoFocus
+                  />
+                </TableCell>
+                <TableCell className="w-[130px]"></TableCell>
+                <TableCell className="w-[150px]">
+                  <Select
+                    value={newTaskData.category_id?.toString() || "none"}
+                    onValueChange={(v) => setNewTaskData({ ...newTaskData, category_id: v === "none" ? undefined : parseInt(v) })}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No category</SelectItem>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="w-[150px]">
+                  {staffList && staffList.length > 0 && (
+                    <Select
+                      value={newTaskData.assigned_to_user_id?.toString() || "none"}
+                      onValueChange={(v) => setNewTaskData({ ...newTaskData, assigned_to_user_id: v === "none" ? undefined : parseInt(v) })}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Assignee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Myself</SelectItem>
+                        {staffList.map((staff) => (
+                          <SelectItem key={staff.id} value={staff.id.toString()}>
+                            {staff.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </TableCell>
+                <TableCell className="w-[180px]">
+                  <Input
+                    type="datetime-local"
+                    value={newTaskData.due_datetime}
+                    onChange={(e) => setNewTaskData({ ...newTaskData, due_datetime: e.target.value })}
+                    className="h-8"
+                  />
+                </TableCell>
+                <TableCell className="w-[100px]"></TableCell>
+                <TableCell className="w-[100px]"></TableCell>
+                <TableCell className="w-[100px]"></TableCell>
+                <TableCell className="w-[80px]"></TableCell>
+                <TableCell className="w-[80px] text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={handleSaveNewTask}
+                      disabled={!newTaskData.title.trim()}
+                      className="h-7"
+                    >
+                      <Save className="h-3 w-3 mr-1" />
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCancelNewTask}
+                      className="h-7"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow

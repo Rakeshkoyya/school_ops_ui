@@ -1235,6 +1235,7 @@ export default function TasksPage() {
   // UI State
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showNewTaskRow, setShowNewTaskRow] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('my');
   // Grouping for all views
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
@@ -1475,6 +1476,36 @@ export default function TasksPage() {
     },
     onError: () => toast.error('Failed to delete task'),
   });
+
+  const createTaskMutation = useMutation({
+    mutationFn: (data: CreateTaskPayload) => api.post('/tasks', data),
+    onSuccess: () => {
+      toast.success('Task created');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      setShowNewTaskRow(false);
+    },
+    onError: () => toast.error('Failed to create task'),
+  });
+
+  const handleSaveNewTask = (data: any) => {
+    const taskData: CreateTaskPayload = {
+      title: data.title,
+      description: data.description || undefined,
+      category_id: data.category_id,
+      due_datetime: data.due_datetime || undefined,
+      assigned_to_user_id: data.assigned_to_user_id,
+    };
+    createTaskMutation.mutate(taskData);
+  };
+
+  const handleCancelNewTask = () => {
+    setShowNewTaskRow(false);
+  };
+
+  const handleNewTaskClick = () => {
+    setShowNewTaskRow(true);
+  };
 
   // Recurring Template Mutations
   const toggleTemplateMutation = useMutation({
@@ -1721,10 +1752,6 @@ export default function TasksPage() {
                 Categories
               </Button>
             )}
-            <Button onClick={() => setShowAddTask(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Task
-            </Button>
           </div>
         </div>
 
@@ -2132,6 +2159,12 @@ export default function TasksPage() {
             ]}
             searchableColumns={[{ id: "title", title: "tasks" }]}
             dateFilterColumnId="due_datetime"
+            showNewTaskRow={showNewTaskRow}
+            onSaveNewTask={handleSaveNewTask}
+            onCancelNewTask={handleCancelNewTask}
+            categories={categories}
+            staffList={isProjectAdmin ? staffList : []}
+            onNewTaskClick={handleNewTaskClick}
           />
         )}
       </div>

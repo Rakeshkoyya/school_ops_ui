@@ -1,24 +1,28 @@
+version: "3.8"
+
 services:
-  # ==========================================================================
-  # Frontend Next.js Server
-  # ==========================================================================
   frontend:
+    image: salman/school-ops-frontend:latest_0.0.1
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=/api/v1
-        - NEXT_PUBLIC_APP_NAME=School Operations
-        - BACKEND_URL=${BACKEND_URL:-http://host.docker.internal:8000}
+        NEXT_PUBLIC_API_URL: /api/v1
+        NEXT_PUBLIC_APP_NAME: "School Operations"
+        BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8080}
+
     container_name: school_ops_frontend
     restart: unless-stopped
+
     ports:
       - "3000:3000"
+
     environment:
-      - NODE_ENV=production
-      - PORT=3000
+      NODE_ENV: production
+      PORT: 3000
+
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:3000"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:3000 || exit 1" ]
       interval: 30s
       timeout: 10s
       start_period: 30s

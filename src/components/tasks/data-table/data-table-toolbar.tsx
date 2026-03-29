@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { type Table } from "@tanstack/react-table"
-import { X, SlidersHorizontal } from "lucide-react"
+import { X, SlidersHorizontal, Plus } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
@@ -36,6 +36,8 @@ interface DataTableToolbarProps<TData> {
   }[]
   /** Column ID for date range filter (e.g., "due_datetime") */
   dateFilterColumnId?: string
+  /** Callback when New Task button is clicked */
+  onNewTaskClick?: () => void
   children?: React.ReactNode
 }
 
@@ -44,6 +46,7 @@ export function DataTableToolbar<TData>({
   filterableColumns = [],
   searchableColumns = [],
   dateFilterColumnId,
+  onNewTaskClick,
   children,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0
@@ -93,6 +96,16 @@ export function DataTableToolbar<TData>({
               }
             }}
           />
+        )}
+        {onNewTaskClick && (
+          <Button
+            onClick={onNewTaskClick}
+            size="sm"
+            className="h-8"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            New Task
+          </Button>
         )}
         {isFiltered && (
           <Button

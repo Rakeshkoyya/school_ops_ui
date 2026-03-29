@@ -360,6 +360,7 @@ export default function AdminProjectsPage() {
     try {
       const response = await apiClient.get(`/projects/${project.id}/export`, {
         responseType: 'blob',
+        timeout: 120000, // 2 minutes – large projects can take a while to export
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -370,8 +371,16 @@ export default function AdminProjectsPage() {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Project exported successfully');
-    } catch {
-      toast.error('Failed to export project');
+    } catch (error: unknown) {
+      console.error('Export error:', error);
+      const axiosErr = error as { code?: string; response?: { status?: number; data?: Blob } };
+      if (axiosErr.code === 'ECONNABORTED') {
+        toast.error('Export timed out – the project may be too large. Please try again.');
+      } else if (axiosErr.response?.status === 403) {
+        toast.error('Permission denied – super admin access is required to export projects.');
+      } else {
+        toast.error('Failed to export project');
+      }
     } finally {
       setExportingId(null);
     }

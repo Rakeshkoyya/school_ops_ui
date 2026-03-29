@@ -124,8 +124,9 @@ apiClient.interceptors.response.use(
 
     // Handle 403 Forbidden
     if (error.response?.status === 403) {
-      // Could redirect to a forbidden page or show a toast
-      if (typeof window !== 'undefined' && !requestUrl.includes('/auth/')) {
+      // Skip redirect for blob/download requests (e.g., export) – they handle errors themselves
+      const isBlobRequest = originalRequest?.responseType === 'blob';
+      if (typeof window !== 'undefined' && !requestUrl.includes('/auth/') && !isBlobRequest) {
         window.location.href = '/forbidden';
       }
     }
