@@ -9,7 +9,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: /api/v1
         NEXT_PUBLIC_APP_NAME: "School Operations"
-        BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8080}
+        BACKEND_URL: ${BACKEND_URL:-https://school-ops-sv.onrender.com/}
 
     container_name: school_ops_frontend
     restart: unless-stopped
