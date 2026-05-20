@@ -995,3 +995,45 @@ export interface AvailablePermissionsResponse {
   project_id: number;
   menu_groups: MenuPermissionGroup[];
 }
+
+// ============================================
+// Holiday and Leave Types
+// ============================================
+
+export interface ProjectHoliday {
+  id: number;
+  project_id: number;
+  holiday_date: string; // Date in YYYY-MM-DD format
+  name?: string;
+  description?: string;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+  tasks_cancelled?: number; // Only present when creating a holiday
+}
+
+export interface CreateHolidayPayload {
+  holiday_date: string; // Date in YYYY-MM-DD format
+  name?: string;
+  description?: string;
+}
+
+export interface UserLeave {
+  id: number;
+  project_id: number;
+  user_id: number;
+  leave_date: string; // Date in YYYY-MM-DD format
+  reason?: string;
+  notes?: string;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+  tasks_cancelled?: number; // Only present when creating a leave
+}
+
+export interface CreateUserLeavePayload {
+  user_id: number;
+  leave_date: string; // Date in YYYY-MM-DD format
+  reason?: string;
+  notes?: string;
+}
