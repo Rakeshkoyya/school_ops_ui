@@ -21,6 +21,7 @@ import {
   FolderKanban,
   DollarSign,
   LayoutList,
+  CalendarDays,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -115,6 +116,12 @@ const schoolAdminNavItems: NavItem[] = [
     icon: <DollarSign className="h-5 w-5" />,
     permission: 'fee:view',
   },
+  {
+    label: 'Holidays & Leaves',
+    href: '/holidays',
+    icon: <CalendarDays className="h-5 w-5" />,
+    permission: 'holiday:view',
+  },
 ];
 
 // Navigation items for Staff/Teacher role
@@ -166,6 +173,12 @@ const staffNavItems: NavItem[] = [
     href: '/fees',
     icon: <DollarSign className="h-5 w-5" />,
     permission: 'fee:view',
+  },
+  {
+    label: 'Holidays & Leaves',
+    href: '/holidays',
+    icon: <CalendarDays className="h-5 w-5" />,
+    permission: 'holiday:view',
   },
 ];
 
