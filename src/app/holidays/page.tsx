@@ -36,7 +36,7 @@ export default function HolidaysPage() {
 
   if (!currentProject) {
     return (
-      <MainLayout title="Holidays & Leaves">
+      <MainLayout>
         <div className="flex items-center justify-center h-64">
           <p className="text-muted-foreground">Please select a project first</p>
         </div>
@@ -45,7 +45,7 @@ export default function HolidaysPage() {
   }
 
   return (
-    <MainLayout title="Holidays & Leaves">
+    <MainLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Holidays & Leaves</h1>
