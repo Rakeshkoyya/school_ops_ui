@@ -121,13 +121,13 @@ export function HolidayCalendar({ projectId }: HolidayCalendarProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div className="flex flex-col">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={handleDateSelect}
-            className="rounded-md border"
+            className="rounded-md border w-full"
             modifiers={{
               holiday: (date) => isDayHoliday(date),
             }}
@@ -140,7 +140,7 @@ export function HolidayCalendar({ projectId }: HolidayCalendarProps) {
           </p>
         </div>
 
-        <div className="ml-6 w-80">
+        <div className="flex flex-col">
           <h3 className="font-semibold mb-3">Holidays this month</h3>
           <ScrollArea className="h-[400px] rounded-md border p-4">
             {isLoading ? (

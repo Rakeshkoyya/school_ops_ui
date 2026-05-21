@@ -143,9 +143,9 @@ export function UserLeaveCalendar({ projectId, users }: UserLeaveCalendarProps) 
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[280px_auto_1fr] lg:grid-cols-[260px_auto_1fr] gap-6">
         {/* User list sidebar */}
-        <div className="w-64 border rounded-md p-4">
+        <div className="border rounded-md p-4">
           <h3 className="font-semibold mb-3">Select User</h3>
           <ScrollArea className="h-[400px]">
             <div className="space-y-2">
@@ -174,78 +174,77 @@ export function UserLeaveCalendar({ projectId, users }: UserLeaveCalendarProps) 
           </ScrollArea>
         </div>
 
-        {/* Calendar and leave list */}
-        <div className="flex-1 flex gap-6">
-          <div>
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={handleDateSelect}
-              className="rounded-md border"
-              disabled={!selectedUserId}
-              modifiers={{
-                leave: (date) => isDayLeave(date),
-              }}
-              modifiersClassNames={{
-                leave: "bg-orange-100 text-orange-900 font-bold",
-              }}
-            />
-            <p className="text-sm text-muted-foreground mt-2">
-              {selectedUserId
-                ? "Click on a date to mark as leave"
-                : "Select a user first"}
-            </p>
-          </div>
+        {/* Calendar */}
+        <div className="flex flex-col">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={handleDateSelect}
+            className="rounded-md border"
+            disabled={!selectedUserId}
+            modifiers={{
+              leave: (date) => isDayLeave(date),
+            }}
+            modifiersClassNames={{
+              leave: "bg-orange-100 text-orange-900 font-bold",
+            }}
+          />
+          <p className="text-sm text-muted-foreground mt-2">
+            {selectedUserId
+              ? "Click on a date to mark as leave"
+              : "Select a user first"}
+          </p>
+        </div>
 
-          <div className="w-80">
-            <h3 className="font-semibold mb-3">
-              {selectedUser?.name}'s Leaves
-            </h3>
-            <ScrollArea className="h-[400px] rounded-md border p-4">
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : leaves.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No leaves marked this month
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {leaves.map((leave) => (
-                    <div
-                      key={leave.id}
-                      className="flex items-start justify-between p-3 rounded-md border bg-card"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">
-                            {format(new Date(leave.leave_date), "MMM dd")}
-                          </Badge>
-                          {leave.reason && (
-                            <span className="font-medium text-sm">
-                              {leave.reason}
-                            </span>
-                          )}
-                        </div>
-                        {leave.notes && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {leave.notes}
-                          </p>
+        {/* Leave list */}
+        <div className="flex-1">
+          <h3 className="font-semibold mb-3">
+            {selectedUser?.name}'s Leaves
+          </h3>
+          <ScrollArea className="h-[400px] rounded-md border p-4">
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : leaves.length === 0 ? (
+              <p className="text-muted-foreground">
+                No leaves marked this month
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {leaves.map((leave) => (
+                  <div
+                    key={leave.id}
+                    className="flex items-start justify-between p-3 rounded-md border bg-card"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">
+                          {format(new Date(leave.leave_date), "MMM dd")}
+                        </Badge>
+                        {leave.reason && (
+                          <span className="font-medium text-sm">
+                            {leave.reason}
+                          </span>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteLeave(leave.id)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        Delete
-                      </Button>
+                      {leave.notes && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {leave.notes}
+                        </p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteLeave(leave.id)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
         </div>
       </div>
 

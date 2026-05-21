@@ -8,20 +8,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HolidayCalendar } from "@/components/holidays/HolidayCalendar";
 import { UserLeaveCalendar } from "@/components/holidays/UserLeaveCalendar";
-import { api } from "@/lib/api-client";
+import { api, setCurrentProjectId } from "@/lib/api-client";
 import type { User } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect } from "react";
 
 export default function HolidaysPage() {
-  const { currentProject } = useProject();
+  const { project: currentProject } = useProject();
   const [activeTab, setActiveTab] = useState("holidays");
+
+  // Ensure API client has the current project ID
+  useEffect(() => {
+    if (currentProject?.id) {
+      setCurrentProjectId(currentProject.id);
+    }
+  }, [currentProject?.id]);
 
   // Fetch project users for the leave calendar
   const { data: users = [], isLoading: isLoadingUsers } = useQuery({
     queryKey: ["project-users", currentProject?.id],
     queryFn: async () => {
-      const response = await api.get<User[]>(`/projects/${currentProject?.slug}/users`);
-      return response.data;
+      const data = await api.get<User[]>(`/auth/project-users`);
+      return data;
     },
     enabled: !!currentProject && activeTab === "leaves",
   });
@@ -49,14 +57,14 @@ export default function HolidaysPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="holidays">Project Holidays</TabsTrigger>
+            <TabsTrigger value="holidays">Holidays</TabsTrigger>
             <TabsTrigger value="leaves">User Leaves</TabsTrigger>
           </TabsList>
 
           <TabsContent value="holidays" className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle>Project Holidays</CardTitle>
+                <CardTitle>Holidays</CardTitle>
                 <CardDescription>
                   Mark dates as holidays for the entire project. No recurring tasks will
                   be generated for any user on these dates.
